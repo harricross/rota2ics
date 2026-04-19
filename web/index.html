@@ -166,6 +166,35 @@
                         nominal hours, no all-day banner.</span>
                     </label>
                 </fieldset>
+                <fieldset id="sp-fieldset" hidden>
+                    <legend>Spare (SP)</legend>
+                    <p class="hint">
+                        <strong>SP = Spare</strong>: the same as AO on other
+                        operators’ rotas — you’re on duty but the actual
+                        diagram is assigned on the day. The PDF prints
+                        nominal sign-on / sign-off times. (Only shown
+                        because your PDF contains SP days.)
+                    </p>
+                    <label class="radio">
+                        <input type="radio" name="sp" value="both" checked />
+                        All-day banner <em>and</em> timed event with nominal hours
+                        <span class="hint inline">— see at a glance it’s a
+                        Spare day, plus a placeholder block on the nominal
+                        hours.</span>
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="sp" value="allday" />
+                        All-day banner only
+                        <span class="hint inline">— mark the day as Spare
+                        but don’t block any time.</span>
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="sp" value="timed" />
+                        Timed event only (using nominal hours)
+                        <span class="hint inline">— just block out the
+                        nominal hours, no all-day banner.</span>
+                    </label>
+                </fieldset>
             </section>
 
             <section class="step" id="step-generate" hidden>
@@ -183,7 +212,8 @@
 
             <section class="step" id="step-preview" hidden>
                 <h2>Preview</h2>
-                <p class="hint">First few events that will be in the file:</p>
+                <p class="hint">First few events that will be in the file. This updates automatically as you change options above.</p>
+                <p id="preview-status" class="status"></p>
                 <div id="preview"></div>
             </section>
 
