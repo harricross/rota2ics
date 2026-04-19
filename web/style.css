@@ -45,8 +45,24 @@ header h1 {
 }
 
 .tagline {
-    margin: 0 0 24px;
+    margin: 0 0 12px;
     color: var(--muted);
+}
+
+.ios-note {
+    margin: 0 0 24px;
+    padding: 10px 14px;
+    background: #fff7e0;
+    border: 1px solid #f0d97a;
+    border-radius: 8px;
+    color: #5a4500;
+    font-size: 14px;
+}
+
+.ios-note code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 0 4px;
+    border-radius: 3px;
 }
 
 .step {
@@ -144,16 +160,6 @@ button {
 button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-.btn-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.btn-row button {
-    flex: 1 1 200px;
 }
 
 .status {
