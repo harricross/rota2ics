@@ -146,6 +146,16 @@ button:disabled {
     cursor: not-allowed;
 }
 
+.btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.btn-row button {
+    flex: 1 1 200px;
+}
+
 .status {
     margin: 8px 0 0;
     color: var(--muted);
