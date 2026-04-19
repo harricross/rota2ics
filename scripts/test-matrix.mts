@@ -8,7 +8,7 @@ import { parseRotaText, type Day } from '../src/parseRota';
 import { buildEvents, buildIcs, type IcsEvent } from '../src/buildIcs';
 
 const PDF = process.argv[2] ?? 'BMC Feb PA 2026.pdf';
-const FIXTURE = 'scripts/fixtures/bmc-feb-pa-2026.txt';
+const FIXTURE = 'scripts/fixtures/anon-rota.txt';
 
 interface Failure {
     label: string;

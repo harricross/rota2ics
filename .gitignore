@@ -7,3 +7,4 @@ dist-web/
 *.pdf
 .playwright-mcp/
 .vscode/
+scripts/fixtures/_real-rota.txt
