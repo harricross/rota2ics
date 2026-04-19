@@ -24,6 +24,12 @@ export interface BuildOptions {
      *   - "timed":  just a timed event using the nominal hours
      */
     aoMode?: 'both' | 'allday' | 'timed';
+    /**
+     * How to render `RB` (Route Refresher) days. Same three modes as
+     * `aoMode`. Defaults to `aoMode` so existing callers get sensible
+     * behaviour without code changes.
+     */
+    rbMode?: 'both' | 'allday' | 'timed';
     /** Description for non-FD shifts, in addition to the code. */
     descriptionTemplate?: (info: {
         link: number;
@@ -137,8 +143,10 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
             const isRB = ds.code === 'RB';
             const isAOLike = isAO || isRB;
             const aoMode = opts.aoMode ?? 'both';
-            const emitAOAllDay = isAOLike && (aoMode === 'both' || aoMode === 'allday');
-            const emitTimed = !isAOLike || aoMode === 'both' || aoMode === 'timed';
+            const rbMode = opts.rbMode ?? aoMode;
+            const mode = isRB ? rbMode : aoMode;
+            const emitAOAllDay = isAOLike && (mode === 'both' || mode === 'allday');
+            const emitTimed = !isAOLike || mode === 'both' || mode === 'timed';
 
             const [onH, onM] = ds.on.split(':').map(Number);
             const [offH, offM] = ds.off.split(':').map(Number);
