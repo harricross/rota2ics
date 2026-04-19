@@ -2,12 +2,13 @@
 // plus a long horizon to exercise wrap-around. Verifies invariants instead of
 // snapshotting bytes, so it's resilient to cosmetic changes.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { extractPdfText } from '../src/extractPdf';
 import { parseRotaText, type Day } from '../src/parseRota';
 import { buildEvents, buildIcs, type IcsEvent } from '../src/buildIcs';
 
 const PDF = process.argv[2] ?? 'BMC Feb PA 2026.pdf';
+const FIXTURE = 'scripts/fixtures/bmc-feb-pa-2026.txt';
 
 interface Failure {
     label: string;
@@ -30,9 +31,20 @@ const countBM = (days: Day[]): number => days.filter((d) => d.code !== 'FD' && d
 
 // ---------- Parse PDF ----------
 
-const text = await extractPdfText(PDF);
+let text: string;
+let source: string;
+if (existsSync(PDF)) {
+    text = await extractPdfText(PDF);
+    source = PDF;
+} else if (existsSync(FIXTURE)) {
+    text = readFileSync(FIXTURE, 'utf8');
+    source = `${FIXTURE} (fixture; ${PDF} not found)`;
+} else {
+    process.stderr.write(`Neither ${PDF} nor ${FIXTURE} was found.\n`);
+    process.exit(1);
+}
 const links = parseRotaText(text);
-process.stdout.write(`Parsed ${links.length} link(s) from ${PDF}\n`);
+process.stdout.write(`Parsed ${links.length} link(s) from ${source}\n`);
 for (const l of links) {
     process.stdout.write(`  Link ${l.link}: ${l.weeks.length} weeks (Date: ${l.date ?? '?'})\n`);
 }
@@ -255,7 +267,3 @@ if (failures.length > 0) {
 } else {
     process.stdout.write(`All checks passed.\n`);
 }
-
-// Reference unused import to satisfy ts-noUnused rules in case readFileSync
-// gets dropped in future edits.
-void readFileSync;
