@@ -34,8 +34,6 @@ const prefixInput = $<HTMLInputElement>('#prefix');
 const fdCheck = $<HTMLInputElement>('#opt-fd');
 const stepGenerate = $<HTMLElement>('#step-generate');
 const generateBtn = $<HTMLButtonElement>('#generate');
-const openCalendarBtn = $<HTMLButtonElement>('#open-calendar');
-const iosHint = $<HTMLParagraphElement>('#ios-hint');
 const genStatus = $<HTMLParagraphElement>('#gen-status');
 const stepPreview = $<HTMLElement>('#step-preview');
 const previewBox = $<HTMLDivElement>('#preview');
@@ -46,21 +44,6 @@ const linkStats = $<HTMLParagraphElement>('#link-stats');
 let parsedLinks: Link[] = [];
 /** True until the user manually edits the start input — lets us auto-fill it. */
 let startInputUserEdited = false;
-
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints! > 1);
-
-/** Probe whether the browser can share a tiny .ics File via Web Share. */
-const canShareIcs = (): boolean => {
-    try {
-        const probe = new File(['BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n'], 'probe.ics', {
-            type: 'text/calendar',
-        });
-        return typeof navigator.canShare === 'function' && navigator.canShare({ files: [probe] });
-    } catch {
-        return false;
-    }
-};
 
 startInput.addEventListener('input', () => {
     startInputUserEdited = true;
@@ -251,28 +234,21 @@ const parseStartDate = (s: string): Date => {
 const slugify = (s: string): string =>
     s.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'rota';
 
-interface BuiltCalendar {
-    ics: string;
-    filename: string;
-    events: ReturnType<typeof buildEvents>;
-    calendarName: string;
-}
-
-const buildCalendar = (): BuiltCalendar | null => {
+const buildAndDownload = (): void => {
     setStatus(genStatus, '');
     const link = parsedLinks.find((l) => l.link === parseInt(linkSel.value, 10));
     if (!link) {
         setStatus(genStatus, 'No Link selected.', 'error');
-        return null;
+        return;
     }
     const startWk = parseInt(rowSel.value, 10);
     if (!startWk) {
         setStatus(genStatus, 'No Wk row selected.', 'error');
-        return null;
+        return;
     }
     if (!startInput.value) {
         setStatus(genStatus, 'Please pick a start Sunday.', 'error');
-        return null;
+        return;
     }
     let start = parseStartDate(startInput.value);
     if (start.getDay() !== 0) {
@@ -286,7 +262,6 @@ const buildCalendar = (): BuiltCalendar | null => {
     }
     const weeks = Math.max(1, Math.min(260, parseInt(weeksInput.value, 10) || 26));
 
-    const calendarName = nameInput.value || `Rota Link ${link.link}`;
     let events;
     try {
         events = buildEvents({
@@ -294,7 +269,7 @@ const buildCalendar = (): BuiltCalendar | null => {
             startWk,
             startDate: start,
             weeksToGenerate: weeks,
-            calendarName,
+            calendarName: nameInput.value || undefined,
             summaryPrefix: prefixInput.value || undefined,
             includeRestDays: fdCheck.checked,
             aoMode: getAoMode(),
@@ -305,18 +280,26 @@ const buildCalendar = (): BuiltCalendar | null => {
             `Error: ${err instanceof Error ? err.message : String(err)}`,
             'error',
         );
-        return null;
+        return;
     }
-    const ics = buildIcs(events, calendarName);
-    const filename = `${slugify(nameInput.value || `rota-link-${link.link}`)}.ics`;
-    return { ics, filename, events, calendarName };
-};
 
-const renderPreview = (events: ReturnType<typeof buildEvents>, weeks: number): void => {
+    const ics = buildIcs(events, nameInput.value || `Rota Link ${link.link}`);
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${slugify(nameInput.value || `rota-link-${link.link}`)}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
     setStatus(
         genStatus,
-        `${events.length} event(s) over ${weeks} week(s).`,
+        `Downloaded ${events.length} event(s) over ${weeks} week(s).`,
     );
+
+    // Render a preview of the first ~10 events.
     stepPreview.hidden = false;
     previewBox.innerHTML = '';
     const fmt = new Intl.DateTimeFormat(undefined, {
@@ -351,44 +334,6 @@ const renderPreview = (events: ReturnType<typeof buildEvents>, weeks: number): v
     }
 };
 
-const buildAndDownload = (): void => {
-    const built = buildCalendar();
-    if (!built) return;
-    const blob = new Blob([built.ics], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = built.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    const weeks = Math.max(1, Math.min(260, parseInt(weeksInput.value, 10) || 26));
-    renderPreview(built.events, weeks);
-};
-
-const buildAndShare = async (): Promise<void> => {
-    const built = buildCalendar();
-    if (!built) return;
-    const file = new File([built.ics], built.filename, { type: 'text/calendar' });
-    try {
-        await navigator.share({
-            files: [file],
-            title: built.calendarName,
-        });
-        const weeks = Math.max(1, Math.min(260, parseInt(weeksInput.value, 10) || 26));
-        renderPreview(built.events, weeks);
-    } catch (err) {
-        // User cancelled the share sheet — that's not an error worth shouting about.
-        if ((err as DOMException).name === 'AbortError') return;
-        setStatus(
-            genStatus,
-            `Could not open share sheet: ${err instanceof Error ? err.message : String(err)}. Try the Download button instead.`,
-            'error',
-        );
-    }
-};
-
 const escapeHtml = (s: string): string =>
     s.replace(/[&<>"']/g, (c) =>
         c === '&'
@@ -403,16 +348,3 @@ const escapeHtml = (s: string): string =>
     );
 
 generateBtn.addEventListener('click', buildAndDownload);
-openCalendarBtn.addEventListener('click', () => {
-    void buildAndShare();
-});
-
-// Show the share button if the browser can hand a .ics File to the OS share
-// sheet (iOS Safari, recent Android Chrome). Show the iOS hint specifically
-// on iPhone/iPad.
-if (canShareIcs()) {
-    openCalendarBtn.hidden = false;
-}
-if (isIOS) {
-    iosHint.hidden = false;
-}
