@@ -215,7 +215,7 @@ for (const link of links) {
                     if (s === 'Rest Day') gotFD++;
                     else if (s === 'AO (As Ordered)') gotAOallday++;
                     else if (s === 'AO (nominal)') gotAOtimed++;
-                    else if (/^BM\s*\d+$/.test(s)) gotBM++;
+                    else if (/^[A-Z]{2}\s*\d+$/.test(s)) gotBM++;
                     else fail(label, `unexpected summary: ${ev.summary}`);
 
                     // All-day events have allDay=true and date-aligned bounds.

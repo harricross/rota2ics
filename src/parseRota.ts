@@ -53,29 +53,30 @@ type Token =
     | { t: 'time'; v: string }
     | { t: 'fd' }
     | { t: 'ao' }
-    | { t: 'bm'; v: string }
+    | { t: 'turn'; v: string } // working-day code: 2-letter depot prefix + 3–4 digit turn number, e.g. "BM 112", "SA 2119"
     | { t: 'total'; v: string }
     | { t: 'int'; v: number };
 
-// BM<digits>: prefer 3- or 4-digit, with a lookahead that ensures we don't
-// swallow the duration time digits that may be glued on (e.g. "BM 210207:19").
+// Depot turn code: any 2 uppercase letters followed by a 3- or 4-digit turn
+// number. Excludes the special markers AO / FD / RD (those are 2 letters with
+// no following digits and are matched separately). The lookahead prevents
+// swallowing duration digits that may be glued on (e.g. "BM 210207:19").
 //
 // XX.YY total comes BEFORE plain integers in the alternation so "34.30" is
 // not split into 34 and (later) 30. Times come before plain integers too.
 //
-// Word boundaries on AO/FD/BM prevent name fragments like "AONDO" or "BMW"
-// from being mistaken for cell codes when the rota has a leftmost names
-// column.
+// Word boundaries prevent name fragments like "AONDO" or "BMW" from being
+// mistaken for cell markers when the rota has a leftmost names column.
 const TOK_RE =
-    /\bBM\s*\d{3,4}(?=$|[^0-9]|\d{2}:\d{2})|\bAO\b|\bFD\b|\d{2}:\d{2}|\d{1,2}\.\d{2}|\d{1,2}/g;
+    /\b(?!AO|FD|RD)[A-Z]{2}\s*\d{3,4}(?=$|[^0-9]|\d{2}:\d{2})|\bAO\b|\b(?:FD|RD)\b|\d{2}:\d{2}|\d{1,2}\.\d{2}|\d{1,2}/g;
 
 function tokenize(line: string): Token[] {
     const out: Token[] = [];
     for (const m of line.matchAll(TOK_RE)) {
         const s = m[0];
-        if (s === 'FD') out.push({ t: 'fd' });
+        if (s === 'FD' || s === 'RD') out.push({ t: 'fd' });
         else if (s === 'AO') out.push({ t: 'ao' });
-        else if (s.startsWith('BM')) out.push({ t: 'bm', v: s.replace(/\s+/g, ' ') });
+        else if (/^[A-Z]{2}\s*\d{3,4}$/.test(s)) out.push({ t: 'turn', v: s.replace(/\s+/g, ' ') });
         else if (/^\d{2}:\d{2}$/.test(s)) out.push({ t: 'time', v: s });
         else if (/^\d{1,2}\.\d{2}$/.test(s)) out.push({ t: 'total', v: s });
         else out.push({ t: 'int', v: parseInt(s, 10) });
@@ -120,7 +121,7 @@ function parseRow(line: string): ParsedRow | null {
                 i++;
                 continue;
             }
-            // Working cell: time, time, (ao | bm), time
+            // Working cell: time, time, (ao | turn), time
             const a = toks[i];
             const b = toks[i + 1];
             const c = toks[i + 2];
@@ -128,7 +129,7 @@ function parseRow(line: string): ParsedRow | null {
             if (
                 !a || !b || !c || !d ||
                 a.t !== 'time' || b.t !== 'time' || d.t !== 'time' ||
-                (c.t !== 'ao' && c.t !== 'bm')
+                (c.t !== 'ao' && c.t !== 'turn')
             ) {
                 ok = false;
                 break;
