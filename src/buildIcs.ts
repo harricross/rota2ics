@@ -129,10 +129,16 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
 
             // AO = "As Ordered" / spare turn. The actual diagram is assigned on
             // the day, but the PDF still prints nominal sign-on / sign-off times.
+            //
+            // RB = Route Refresher. Behaves like AO for scheduling purposes
+            // (same all-day + timed treatment, follows aoMode), but renders
+            // with "Route Refresher" text instead of "AO ...".
             const isAO = ds.code === 'AO';
+            const isRB = ds.code === 'RB';
+            const isAOLike = isAO || isRB;
             const aoMode = opts.aoMode ?? 'both';
-            const emitAOAllDay = isAO && (aoMode === 'both' || aoMode === 'allday');
-            const emitTimed = !isAO || aoMode === 'both' || aoMode === 'timed';
+            const emitAOAllDay = isAOLike && (aoMode === 'both' || aoMode === 'allday');
+            const emitTimed = !isAOLike || aoMode === 'both' || aoMode === 'timed';
 
             const [onH, onM] = ds.on.split(':').map(Number);
             const [offH, offM] = ds.off.split(':').map(Number);
@@ -147,11 +153,15 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
 
             if (emitAOAllDay) {
                 events.push({
-                    uid: makeUid(link.link, wkNum, d, date, 'AO-allday'),
-                    summary: (opts.summaryPrefix ?? '') + 'AO (As Ordered)',
+                    uid: makeUid(link.link, wkNum, d, date, isRB ? 'RB-allday' : 'AO-allday'),
+                    summary:
+                        (opts.summaryPrefix ?? '') +
+                        (isRB ? 'Route Refresher' : 'AO (As Ordered)'),
                     description:
                         `Link ${link.link}, Wk ${wkNum}, ${DAY_NAMES[d]}\n` +
-                        `Spare turn — actual diagram assigned on the day.\n` +
+                        (isRB
+                            ? `Route Refresher (RB) — route familiarisation turn.\n`
+                            : `Spare turn — actual diagram assigned on the day.\n`) +
                         `Nominal sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`,
                     start: date,
                     end: nextDay,
@@ -162,7 +172,7 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
             if (emitTimed) {
                 const baseDesc =
                     `Link ${link.link}, Wk ${wkNum}, ${DAY_NAMES[d]}\n` +
-                    (isAO
+                    (isAOLike
                         ? `Nominal sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`
                         : `Sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`);
                 const extra = opts.descriptionTemplate?.({
@@ -176,7 +186,11 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
                     uid: makeUid(link.link, wkNum, d, date, ds.code),
                     summary:
                         (opts.summaryPrefix ?? '') +
-                        (isAO ? 'AO (nominal)' : ds.code),
+                        (isRB
+                            ? 'Route Refresher'
+                            : isAO
+                              ? 'AO (nominal)'
+                              : ds.code),
                     description: extra ? `${baseDesc}\n${extra}` : baseDesc,
                     start,
                     end,
