@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { writeFileSync, readFileSync } from 'node:fs';
-import { extractPdfText } from './extractPdf.js';
-import { parseRotaText, type Link } from './parseRota.js';
-import { buildEvents, buildIcs } from './buildIcs.js';
+import { extractPdfText } from './extractPdf';
+import { parseRotaText, type Link } from './parseRota';
+import { buildEvents, buildIcs } from './buildIcs';
 
 interface Args {
     pdf?: string;
@@ -16,6 +16,8 @@ interface Args {
     list?: boolean;
     dump?: boolean;         // hidden: print parsed JSON
     noRestDays?: boolean;
+    ao?: string;
+    prefix?: string;
     help?: boolean;
 }
 
@@ -24,21 +26,29 @@ function usage(): never {
         `rota2ics — convert a UK railway-staff rota PDF into an ICS calendar
 
 Usage:
-  rota2ics --pdf <file.pdf> --link <N> --row <N> --start <YYYY-MM-DD> [options]
+  rota2ics --pdf <file.pdf> --link <N> [--row <N>] [--start <YYYY-MM-DD>] [options]
   rota2ics --pdf <file.pdf> --list
 
 Required (unless --list / --dump):
   --pdf <file>        Path to the rota PDF
   --link <n>          Which Link (rota) you are on
-  --row  <n>          The Wk row you occupy on the --start date
-  --start <date>      Sunday (YYYY-MM-DD) of the first calendar week to output
 
 Options:
+  --row  <n>          The Wk row you occupy on the --start date
+                      (default: 1)
+  --start <date>      Sunday (YYYY-MM-DD) of the first calendar week to output
+                      (default: the "Date:" printed at the top of the PDF for
+                      the chosen Link)
   --weeks <n>         Number of weeks of events to generate (default 26)
   --out <file>        Output ICS file (default rota.ics)
   --name <text>       Calendar display name (X-WR-CALNAME)
   --no-rest-days      Suppress all-day "Rest Day" events for FD entries
                       (by default FD and AO are both emitted as all-day events)
+  --ao <mode>         How to render AO (As Ordered) days:
+                        both   = all-day banner + timed event (default)
+                        allday = all-day banner only
+                        timed  = timed event only
+  --prefix <text>     Prefix every event title with <text> (e.g. "Work: ")
   --list              Just list the Links/Wk counts found in the PDF and exit
   --dump              Print the parsed rota as JSON and exit
   --text <file>       Read pre-extracted PDF text from a file instead of --pdf
@@ -74,7 +84,9 @@ function parseArgs(argv: string[]): Args {
             case 'start':
             case 'weeks':
             case 'out':
-            case 'name': {
+            case 'name':
+            case 'ao':
+            case 'prefix': {
                 const v = argv[++i];
                 if (v === undefined) usage();
                 (out as Record<string, string>)[key] = v;
@@ -111,6 +123,23 @@ function parseStartDate(input: string): Date {
     return d;
 }
 
+function parsePdfDate(input: string): Date {
+    // PDF prints dd/mm/yyyy.
+    const m = input.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) throw new Error(`PDF "Date:" not in dd/mm/yyyy form: "${input}"`);
+    return new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+}
+
+function fmtIso(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function parseAoMode(s: string | undefined): 'both' | 'allday' | 'timed' | undefined {
+    if (!s) return undefined;
+    if (s === 'both' || s === 'allday' || s === 'timed') return s;
+    throw new Error(`--ao must be one of: both, allday, timed (got "${s}")`);
+}
+
 async function main(): Promise<void> {
     const args = parseArgs(process.argv.slice(2));
     if (args.help) usage();
@@ -132,7 +161,7 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (!args.link || !args.row || !args.start) usage();
+    if (!args.link) usage();
 
     const linkNum = parseInt(args.link, 10);
     const link = links.find((l) => l.link === linkNum);
@@ -143,14 +172,32 @@ async function main(): Promise<void> {
         process.exit(2);
     }
 
-    const startWk = parseInt(args.row, 10);
-    let startDate = parseStartDate(args.start);
+    const startWk = args.row ? parseInt(args.row, 10) : 1;
+
+    let startDate: Date;
+    let startSource: 'cli' | 'pdf';
+    if (args.start) {
+        startDate = parseStartDate(args.start);
+        startSource = 'cli';
+    } else if (link.date) {
+        startDate = parsePdfDate(link.date);
+        startSource = 'pdf';
+        process.stdout.write(
+            `Using PDF "Date:" for Link ${link.link} as start: ${args.start ?? link.date} → ${fmtIso(startDate)}\n`,
+        );
+    } else {
+        process.stderr.write(
+            `No --start given and Link ${link.link} has no "Date:" in the PDF — please pass --start YYYY-MM-DD.\n`,
+        );
+        process.exit(2);
+    }
     if (startDate.getDay() !== 0) {
         const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][startDate.getDay()];
         const adjusted = new Date(startDate);
         adjusted.setDate(startDate.getDate() - startDate.getDay());
+        const src = startSource === 'pdf' ? `PDF date ${link.date}` : `--start ${args.start}`;
         process.stderr.write(
-            `Warning: --start ${args.start} is a ${day}, not Sunday. Using previous Sunday: ${adjusted.toISOString().slice(0, 10)}.\n`,
+            `Warning: ${src} is a ${day}, not Sunday. Using previous Sunday: ${fmtIso(adjusted)}.\n`,
         );
         startDate = adjusted;
     }
@@ -163,7 +210,9 @@ async function main(): Promise<void> {
         startDate,
         weeksToGenerate: weeks,
         calendarName: args.name,
+        summaryPrefix: args.prefix,
         includeRestDays: !args.noRestDays,
+        aoMode: parseAoMode(args.ao),
     });
 
     const ics = buildIcs(events, args.name ?? `Rota Link ${link.link}`);
