@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.ics
+!sample/*.ics
+.DS_Store
+.pdf
