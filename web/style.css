@@ -19,6 +19,9 @@ body {
     padding: 0;
     background: var(--bg);
     color: var(--fg);
+    /* Prevent iOS Safari from auto-inflating font sizes in landscape. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     font: 16px/1.5
         -apple-system,
         BlinkMacSystemFont,
@@ -88,11 +91,19 @@ input[type='date'],
 input[type='file'],
 select {
     font: inherit;
-    padding: 8px 10px;
+    /* 16px keeps iOS Safari from zooming in when an input gets focus. */
+    font-size: max(16px, 1em);
+    padding: 10px 12px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: #fff;
     color: var(--fg);
+    width: 100%;
+    min-height: 44px;
+}
+
+input[type='file'] {
+    padding: 8px;
 }
 
 input:focus,
@@ -117,13 +128,17 @@ legend {
 
 button {
     font: inherit;
-    padding: 10px 18px;
+    padding: 12px 20px;
     border: 0;
     border-radius: 8px;
     background: var(--accent);
     color: var(--accent-fg);
     cursor: pointer;
     font-weight: 600;
+    min-height: 44px;
+    width: 100%;
+    max-width: 320px;
+    touch-action: manipulation;
 }
 
 button:disabled {
@@ -217,6 +232,115 @@ fieldset .hint {
 
 .evt .date {
     color: var(--muted);
+}
+
+/* ---------- Mobile / narrow-viewport tweaks ---------- */
+
+@media (max-width: 600px) {
+    main {
+        padding: 16px 14px 60px;
+    }
+
+    header h1 {
+        font-size: 26px;
+    }
+
+    .tagline {
+        font-size: 14px;
+        margin-bottom: 16px;
+    }
+
+    .step {
+        padding: 14px 14px;
+        margin: 12px 0;
+        border-radius: 8px;
+    }
+
+    .step h2 {
+        font-size: 17px;
+    }
+
+    /* Stack form fields one-per-row for easier thumb input. */
+    .grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    fieldset {
+        padding: 8px 10px 10px;
+    }
+
+    .help-list {
+        padding-left: 18px;
+    }
+
+    .hint.inline {
+        margin-left: 26px;
+    }
+
+    label.radio,
+    label.check {
+        align-items: flex-start;
+        gap: 10px;
+        padding: 6px 0;
+    }
+
+    /* Bigger hit area for the tap targets. */
+    label.radio input,
+    label.check input {
+        margin-top: 3px;
+        transform: scale(1.15);
+    }
+
+    button {
+        width: 100%;
+        max-width: none;
+    }
+
+    #preview {
+        max-height: 50vh;
+        font-size: 12px;
+    }
+}
+
+/* Respect reduced-motion preference for any future transitions. */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Optional dark-mode polish so the page doesn't blare white at night. */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --fg: #e8eaed;
+        --muted: #a8acb3;
+        --bg: #131416;
+        --card: #1d1f22;
+        --border: #2f3236;
+        --accent: #4d9bf0;
+        --accent-fg: #0b0c0e;
+    }
+
+    input[type='text'],
+    input[type='number'],
+    input[type='date'],
+    input[type='file'],
+    select {
+        background: #15171a;
+        color: var(--fg);
+        color-scheme: dark;
+    }
+
+    .link-stats {
+        background: #16202c;
+    }
+
+    #preview {
+        background: #16181b;
+    }
 }
 
 footer {
