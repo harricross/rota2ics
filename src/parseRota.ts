@@ -22,8 +22,8 @@ export interface DayShift {
     duration: string;
     /**
      * Turn / diagram code as printed, e.g. "BM 112", "AO", "RB" (Route
-     * Refresher), or a bare turn number like "4" or "4018" on PDFs that omit
-     * the depot prefix.
+     * Refresher), "SP" (Spare), or a bare turn number like "4" or "4018"
+     * on PDFs that omit the depot prefix.
      */
     code: string;
 }
@@ -58,14 +58,16 @@ type Token =
     | { t: 'fd' }
     | { t: 'ao' }
     | { t: 'rb' } // Route Refresher: behaves like AO (has on/off/duration) but displays differently
+    | { t: 'sp' } // Spare (other operators' equivalent of AO): same shape, different display
     | { t: 'turn'; v: string } // working-day code: 2-letter depot prefix + 3–4 digit turn number, e.g. "BM 112", "SA 2119"
     | { t: 'total'; v: string }
     | { t: 'int'; v: number };
 
 // Depot turn code: any 2 uppercase letters followed by a 3- or 4-digit turn
-// number. Excludes the special markers AO / FD / RD / RB (those are 2 letters
-// with no following digits and are matched separately). The lookahead prevents
-// swallowing duration digits that may be glued on (e.g. "BM 210207:19").
+// number. Excludes the special markers AO / FD / RD / RB / SP (those are 2
+// letters with no following digits and are matched separately). The lookahead
+// prevents swallowing duration digits that may be glued on (e.g.
+// "BM 210207:19").
 //
 // XX.YY total comes BEFORE plain integers in the alternation so "34.30" is
 // not split into 34 and (later) 30. Times come before plain integers too.
@@ -73,10 +75,16 @@ type Token =
 // Some PDFs (e.g. "Link 1") print bare turn numbers (1–4 digits) without a
 // depot prefix, so the integer match accepts up to 4 digits.
 //
+// Some PDFs (e.g. GI Conductors) print the per-week total in HH:MM form
+// (e.g. "30:32" = 30h 32m) instead of HH.MM. We match both as `\d{2}:\d{2}`
+// here and disambiguate from times in `tokenize` below: real sign-on /
+// sign-off times never exceed `24:00`, so any HH:MM with HH ≥ 25 must be a
+// per-week total.
+//
 // Word boundaries prevent name fragments like "AONDO" or "BMW" from being
 // mistaken for cell markers when the rota has a leftmost names column.
 const TOK_RE =
-    /\b(?!AO|FD|RD|RB)[A-Z]{2}\s*\d{3,4}(?=$|[^0-9]|\d{2}:\d{2})|\bAO\b|\bRB\b|\b(?:FD|RD)\b|\d{2}:\d{2}|\d{1,2}\.\d{2}|\d{1,4}/g;
+    /\b(?!AO|FD|RD|RB|SP)[A-Z]{2}\s*\d{3,4}(?=$|[^0-9]|\d{2}:\d{2})|\bAO\b|\bRB\b|\bSP\b|\b(?:FD|RD)\b|\d{2}:\d{2}|\d{1,2}\.\d{2}|\d{1,4}/g;
 
 function tokenize(line: string): Token[] {
     const out: Token[] = [];
@@ -85,8 +93,17 @@ function tokenize(line: string): Token[] {
         if (s === 'FD' || s === 'RD') out.push({ t: 'fd' });
         else if (s === 'AO') out.push({ t: 'ao' });
         else if (s === 'RB') out.push({ t: 'rb' });
+        else if (s === 'SP') out.push({ t: 'sp' });
         else if (/^[A-Z]{2}\s*\d{3,4}$/.test(s)) out.push({ t: 'turn', v: s.replace(/\s+/g, ' ') });
-        else if (/^\d{2}:\d{2}$/.test(s)) out.push({ t: 'time', v: s });
+        else if (/^\d{2}:\d{2}$/.test(s)) {
+            // Disambiguate HH:MM as either a clock time or a weekly total.
+            // Sign-on / sign-off times never go above 24:00, so HH ≥ 25 must
+            // be a per-week total (see GI Conductors PDFs which print totals
+            // like "30:32" instead of "30.32").
+            const hh = parseInt(s.slice(0, 2), 10);
+            if (hh >= 25) out.push({ t: 'total', v: s });
+            else out.push({ t: 'time', v: s });
+        }
         else if (/^\d{1,2}\.\d{2}$/.test(s)) out.push({ t: 'total', v: s });
         else out.push({ t: 'int', v: parseInt(s, 10) });
     }
@@ -130,10 +147,11 @@ function parseRow(line: string): ParsedRow | null {
                 i++;
                 continue;
             }
-            // Working cell: time, time, (ao | rb | turn | int), time
+            // Working cell: time, time, (ao | rb | sp | turn | int), time
             // The code slot accepts:
             //   - 'ao'   → "AO" (As Ordered / spare turn)
             //   - 'rb'   → "RB" (Route Refresher)
+            //   - 'sp'   → "SP" (Spare — other operators' AO equivalent)
             //   - 'turn' → e.g. "BM 112" (depot prefix + number)
             //   - 'int'  → bare turn number, e.g. "4" or "4018"
             //              (used by PDFs that omit the depot prefix)
@@ -144,7 +162,7 @@ function parseRow(line: string): ParsedRow | null {
             if (
                 !a || !b || !c || !d ||
                 a.t !== 'time' || b.t !== 'time' || d.t !== 'time' ||
-                (c.t !== 'ao' && c.t !== 'rb' && c.t !== 'turn' && c.t !== 'int')
+                (c.t !== 'ao' && c.t !== 'rb' && c.t !== 'sp' && c.t !== 'turn' && c.t !== 'int')
             ) {
                 ok = false;
                 break;
@@ -152,6 +170,7 @@ function parseRow(line: string): ParsedRow | null {
             let code: string;
             if (c.t === 'ao') code = 'AO';
             else if (c.t === 'rb') code = 'RB';
+            else if (c.t === 'sp') code = 'SP';
             else if (c.t === 'turn') code = c.v;
             else code = String(c.v);
             days.push({
@@ -213,7 +232,18 @@ export function parseRotaText(text: string): Link[] {
     for (const h of linkHeaders) {
         if (!h.date && di < pendingDates.length) h.date = pendingDates[di++];
     }
-    if (linkHeaders.length === 0) {
+    // Some PDFs (e.g. GI Conductors) repeat the same `Link Name : LINK 1`
+    // header at the top of each page even though the schedule rows continue
+    // numbering across pages. Collapse consecutive duplicate headers (same
+    // link number, same date or both undated) so the per-link grouping below
+    // matches a single contiguous run of rows.
+    const dedupedHeaders: { link: number; date?: string }[] = [];
+    for (const h of linkHeaders) {
+        const prev = dedupedHeaders[dedupedHeaders.length - 1];
+        if (prev && prev.link === h.link && prev.date === h.date) continue;
+        dedupedHeaders.push(h);
+    }
+    if (dedupedHeaders.length === 0) {
         throw new Error('No "Link N" headers found in PDF text.');
     }
 
@@ -238,16 +268,16 @@ export function parseRotaText(text: string): Link[] {
         }
     }
 
-    if (groupSizes.length !== linkHeaders.length) {
+    if (groupSizes.length !== dedupedHeaders.length) {
         throw new Error(
-            `Found ${linkHeaders.length} link header(s) but ${groupSizes.length} schedule group(s) (sizes: [${groupSizes.join(', ')}]).`,
+            `Found ${dedupedHeaders.length} link header(s) but ${groupSizes.length} schedule group(s) (sizes: [${groupSizes.join(', ')}]).`,
         );
     }
 
     const links: Link[] = [];
     let cursor = 0;
     for (let g = 0; g < groupSizes.length; g++) {
-        const header = linkHeaders[g];
+        const header = dedupedHeaders[g];
         const size = groupSizes[g];
         const weeks: Week[] = [];
         for (let r = 0; r < size; r++) {

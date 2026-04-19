@@ -30,6 +30,12 @@ export interface BuildOptions {
      * behaviour without code changes.
      */
     rbMode?: 'both' | 'allday' | 'timed';
+    /**
+     * How to render `SP` (Spare) days — some operators (e.g. GI Conductors)
+     * print SP instead of AO. Same three modes as `aoMode`. Defaults to
+     * `aoMode`.
+     */
+    spMode?: 'both' | 'allday' | 'timed';
     /** Description for non-FD shifts, in addition to the code. */
     descriptionTemplate?: (info: {
         link: number;
@@ -139,12 +145,17 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
             // RB = Route Refresher. Behaves like AO for scheduling purposes
             // (same all-day + timed treatment, follows aoMode), but renders
             // with "Route Refresher" text instead of "AO ...".
+            //
+            // SP = Spare. Other operators' equivalent of AO; same scheduling
+            // shape, rendered as "Spare".
             const isAO = ds.code === 'AO';
             const isRB = ds.code === 'RB';
-            const isAOLike = isAO || isRB;
+            const isSP = ds.code === 'SP';
+            const isAOLike = isAO || isRB || isSP;
             const aoMode = opts.aoMode ?? 'both';
             const rbMode = opts.rbMode ?? aoMode;
-            const mode = isRB ? rbMode : aoMode;
+            const spMode = opts.spMode ?? aoMode;
+            const mode = isRB ? rbMode : isSP ? spMode : aoMode;
             const emitAOAllDay = isAOLike && (mode === 'both' || mode === 'allday');
             const emitTimed = !isAOLike || mode === 'both' || mode === 'timed';
 
@@ -160,16 +171,23 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
             }
 
             if (emitAOAllDay) {
+                const allDayKind = isRB ? 'RB-allday' : isSP ? 'SP-allday' : 'AO-allday';
+                const allDaySummary = isRB
+                    ? 'Route Refresher'
+                    : isSP
+                      ? 'Spare'
+                      : 'AO (As Ordered)';
+                const allDayBlurb = isRB
+                    ? `Route Refresher (RB) — route familiarisation turn.\n`
+                    : isSP
+                      ? `Spare (SP) — actual diagram assigned on the day.\n`
+                      : `Spare turn — actual diagram assigned on the day.\n`;
                 events.push({
-                    uid: makeUid(link.link, wkNum, d, date, isRB ? 'RB-allday' : 'AO-allday'),
-                    summary:
-                        (opts.summaryPrefix ?? '') +
-                        (isRB ? 'Route Refresher' : 'AO (As Ordered)'),
+                    uid: makeUid(link.link, wkNum, d, date, allDayKind),
+                    summary: (opts.summaryPrefix ?? '') + allDaySummary,
                     description:
                         `Link ${link.link}, Wk ${wkNum}, ${DAY_NAMES[d]}\n` +
-                        (isRB
-                            ? `Route Refresher (RB) — route familiarisation turn.\n`
-                            : `Spare turn — actual diagram assigned on the day.\n`) +
+                        allDayBlurb +
                         `Nominal sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`,
                     start: date,
                     end: nextDay,
@@ -190,15 +208,16 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
                     dayIndex: d,
                 });
 
+                const timedSummary = isRB
+                    ? 'Route Refresher'
+                    : isSP
+                      ? 'Spare'
+                      : isAO
+                        ? 'AO (nominal)'
+                        : ds.code;
                 events.push({
                     uid: makeUid(link.link, wkNum, d, date, ds.code),
-                    summary:
-                        (opts.summaryPrefix ?? '') +
-                        (isRB
-                            ? 'Route Refresher'
-                            : isAO
-                              ? 'AO (nominal)'
-                              : ds.code),
+                    summary: (opts.summaryPrefix ?? '') + timedSummary,
                     description: extra ? `${baseDesc}\n${extra}` : baseDesc,
                     start,
                     end,

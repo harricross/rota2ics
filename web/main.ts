@@ -40,6 +40,7 @@ const previewBox = $<HTMLDivElement>('#preview');
 const previewStatus = $<HTMLParagraphElement>('#preview-status');
 const linkStats = $<HTMLParagraphElement>('#link-stats');
 const rbFieldset = $<HTMLFieldSetElement>('#rb-fieldset');
+const spFieldset = $<HTMLFieldSetElement>('#sp-fieldset');
 
 // ---------- State ----------
 
@@ -111,9 +112,9 @@ const applyLinkDefaults = (): void => {
     renderLinkStats(link);
 };
 
-/** Parse a printed total like "34.30" (= 34h 30m) into total minutes. */
+/** Parse a printed total like "34.30" or "34:30" (= 34h 30m) into total minutes. */
 const parseHoursDotMinutes = (s: string): number | null => {
-    const m = s.match(/^(\d{1,2})\.(\d{2})$/);
+    const m = s.match(/^(\d{1,2})[.:](\d{2})$/);
     if (!m) return null;
     const mins = parseInt(m[2], 10);
     if (mins >= 60) return null;
@@ -195,6 +196,7 @@ pdfInput.addEventListener('change', async () => {
         populateLinks();
         applyLinkDefaults();
         rbFieldset.hidden = !anyLinkHasRB(parsedLinks);
+        spFieldset.hidden = !anyLinkHasSP(parsedLinks);
         if (!nameInput.value && parsedLinks[0]) {
             nameInput.value = `Rota Link ${parsedLinks[0].link}`;
         }
@@ -233,7 +235,7 @@ startInput.addEventListener('change', () => updatePreview());
 nameInput.addEventListener('input', () => updatePreview());
 prefixInput.addEventListener('input', () => updatePreview());
 fdCheck.addEventListener('change', () => updatePreview());
-for (const r of document.querySelectorAll<HTMLInputElement>('input[name="ao"], input[name="rb"]')) {
+for (const r of document.querySelectorAll<HTMLInputElement>('input[name="ao"], input[name="rb"], input[name="sp"]')) {
     r.addEventListener('change', () => updatePreview());
 }
 
@@ -253,6 +255,16 @@ const getRbMode = (): 'both' | 'allday' | 'timed' => {
 
 const anyLinkHasRB = (links: Link[]): boolean =>
     links.some((l) => l.weeks.some((w) => w.days.some((d) => d.code === 'RB')));
+
+const getSpMode = (): 'both' | 'allday' | 'timed' => {
+    const checked = document.querySelector<HTMLInputElement>(
+        'input[name="sp"]:checked',
+    );
+    return (checked?.value as 'both' | 'allday' | 'timed') ?? 'both';
+};
+
+const anyLinkHasSP = (links: Link[]): boolean =>
+    links.some((l) => l.weeks.some((w) => w.days.some((d) => d.code === 'SP')));
 
 const parseStartDate = (s: string): Date => {
     const [y, m, d] = s.split('-').map(Number);
@@ -310,6 +322,7 @@ const computeEvents = (statusEl: HTMLElement): ComputedEvents | null => {
             includeRestDays: fdCheck.checked,
             aoMode: getAoMode(),
             rbMode: getRbMode(),
+            spMode: getSpMode(),
         });
         return { events, weeks, link, note };
     } catch (err) {
