@@ -38,6 +38,7 @@ const genStatus = $<HTMLParagraphElement>('#gen-status');
 const stepPreview = $<HTMLElement>('#step-preview');
 const previewBox = $<HTMLDivElement>('#preview');
 const linkStats = $<HTMLParagraphElement>('#link-stats');
+const rbFieldset = $<HTMLFieldSetElement>('#rb-fieldset');
 
 // ---------- State ----------
 
@@ -192,6 +193,7 @@ pdfInput.addEventListener('change', async () => {
         );
         populateLinks();
         applyLinkDefaults();
+        rbFieldset.hidden = !anyLinkHasRB(parsedLinks);
         if (!nameInput.value && parsedLinks[0]) {
             nameInput.value = `Rota Link ${parsedLinks[0].link}`;
         }
@@ -225,6 +227,16 @@ const getAoMode = (): 'both' | 'allday' | 'timed' => {
     );
     return (checked?.value as 'both' | 'allday' | 'timed') ?? 'both';
 };
+
+const getRbMode = (): 'both' | 'allday' | 'timed' => {
+    const checked = document.querySelector<HTMLInputElement>(
+        'input[name="rb"]:checked',
+    );
+    return (checked?.value as 'both' | 'allday' | 'timed') ?? 'both';
+};
+
+const anyLinkHasRB = (links: Link[]): boolean =>
+    links.some((l) => l.weeks.some((w) => w.days.some((d) => d.code === 'RB')));
 
 const parseStartDate = (s: string): Date => {
     const [y, m, d] = s.split('-').map(Number);
@@ -273,6 +285,7 @@ const buildAndDownload = (): void => {
             summaryPrefix: prefixInput.value || undefined,
             includeRestDays: fdCheck.checked,
             aoMode: getAoMode(),
+            rbMode: getRbMode(),
         });
     } catch (err) {
         setStatus(
