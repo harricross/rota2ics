@@ -109,6 +109,31 @@ for (const l of links) {
     }
 }
 
+// ---------- Single-link layout (e.g. "LINK A") ----------
+//
+// Some rotas describe one link per PDF using a letter ID and may wrap wide
+// turn codes (e.g. SA 4118) into multiple sub-rows inside a cell. Verify the
+// single-link anonymised fixture parses to a sensible shape.
+{
+    const SINGLE = 'scripts/fixtures/anon-linka.txt';
+    const label = 'single-link letter-ID variant';
+    if (existsSync(SINGLE)) {
+        const linkaText = readFileSync(SINGLE, 'utf8');
+        const linkaLinks = parseRotaText(linkaText);
+        if (linkaLinks.length !== 1) {
+            fail(label, `expected 1 link, got ${linkaLinks.length}`);
+        } else if (linkaLinks[0].weeks.length < 4) {
+            fail(label, `expected at least 4 weeks, got ${linkaLinks[0].weeks.length}`);
+        } else if (linkaLinks[0].weeks.some((w) => w.days.length !== 7)) {
+            fail(label, 'a week did not have 7 days');
+        } else {
+            ok(label);
+        }
+    } else {
+        process.stdout.write(`  skip  ${label} (${SINGLE} not found)\n`);
+    }
+}
+
 // Each row must have exactly 7 days; each working day must have 4 fields populated.
 for (const l of links) {
     for (const w of l.weeks) {

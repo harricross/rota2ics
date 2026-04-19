@@ -151,8 +151,16 @@ function parseRow(line: string): ParsedRow | null {
 
 // ---------- Header parsing ----------
 
-const RE_LINK_HEADER = /Link\s*(\d+)\s*(?:Date\s*:\s*(\d{2}\/\d{2}\/\d{4}))?/g;
+// "Link 1" / "Link 12" — numeric, optionally with an inline date.
+// "LINK A" / "Link B" — single-letter ID; we map A→1, B→2, … so downstream
+//   code stays uniform (numeric link IDs).
+const RE_LINK_HEADER = /\bLink\s+(\d+|[A-Z])\b\s*(?:Date\s*:\s*(\d{2}\/\d{2}\/\d{4}))?/gi;
 const RE_DATE_ONLY = /^Date\s*:\s*(\d{2}\/\d{2}\/\d{4})\s*$/;
+
+const linkIdToNumber = (raw: string): number => {
+    if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+    return raw.toUpperCase().charCodeAt(0) - 'A'.charCodeAt(0) + 1;
+};
 
 // ---------- Top-level ----------
 
@@ -177,7 +185,7 @@ export function parseRotaText(text: string): Link[] {
         let any = false;
         while ((m = RE_LINK_HEADER.exec(line)) !== null) {
             any = true;
-            linkHeaders.push({ link: parseInt(m[1], 10), date: m[2] });
+            linkHeaders.push({ link: linkIdToNumber(m[1]), date: m[2] });
         }
         if (any) continue;
     }
