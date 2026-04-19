@@ -21,6 +21,25 @@ applies to, the entire future rota is determined.
 
 ## Usage
 
+There are two ways to use rota2ics: a **web UI** (recommended for most people)
+and a **command-line tool**.
+
+### Web UI
+
+```sh
+npm install
+npm run web          # development server on http://localhost:5173
+
+# or, to produce a static site you can host anywhere:
+npm run web:build    # output in ./dist-web
+```
+
+Open the page, drag in your rota PDF, choose your Link / Wk row / start
+Sunday, set the options, and click **Download .ics**. Everything runs in your
+browser — the PDF is never uploaded anywhere.
+
+### Command line
+
 ```sh
 npm install
 
@@ -37,7 +56,7 @@ npm start -- --pdf "BMC Feb PA 2026.pdf" \
 Then import `my-rota.ics` into Google Calendar (Settings → Import & export) or
 open it on iOS / macOS to add the events to your calendar.
 
-### Options
+### CLI options
 
 | Flag | Description |
 | --- | --- |
@@ -48,15 +67,21 @@ open it on iOS / macOS to add the events to your calendar.
 | `--weeks <n>` | Weeks of events to generate (default 26) |
 | `--out <file>` | Output ICS file (default `rota.ics`) |
 | `--name <text>` | Calendar display name |
+| `--prefix <text>` | Prefix every event title with this string |
 | `--no-rest-days` | Suppress the all-day "Rest Day" events for `FD` cells |
+| `--ao <mode>` | How to render `AO` days: `both` (default) / `allday` / `timed` |
 | `--list` | List the Links found in the PDF and exit |
 | `--dump` | Print the parsed rota as JSON and exit |
 
 ## Notes
 
-- `FD` (Free Day) and `AO` (As Ordered / spare) cells are written as **all-day
-  events** — there are no fixed sign-on/off times for them. Booked turns
-  (`BM …`) become timed events using their printed sign-on / sign-off.
+- `FD` (Free Day) cells become all-day "Rest Day" events.
+- `AO` (As Ordered / spare) cells emit, by default, both an all-day banner
+  *and* a timed event using the printed nominal sign-on / sign-off. You can
+  switch to `allday`-only or `timed`-only via `--ao` (CLI) or the radio
+  buttons in the web UI.
+- Booked turns (`BM …`) become timed events using their printed sign-on /
+  sign-off.
 - Times are written as RFC 5545 "floating" local times (no `TZID`), so each
   shift displays in the viewer's local time zone — appropriate for UK-based
   calendars.
@@ -71,15 +96,25 @@ open it on iOS / macOS to add the events to your calendar.
 ```
 src/
   cli.ts          Command-line entry point
-  extractPdf.ts   Wraps pdf-parse to get plain text out of the PDF
+  extractPdf.ts   Wraps pdf-parse to get plain text out of the PDF (Node)
   parseRota.ts    Parses the text into Link / Week / Day structures
   buildIcs.ts     Builds calendar events and serialises them to ICS
+web/
+  index.html      Web UI markup
+  style.css       Web UI styles
+  main.ts         Web UI logic (uses pdfjs-dist for browser PDF parsing)
 ```
+
+The `parseRota.ts` and `buildIcs.ts` modules are shared between the CLI and
+the web app — only the PDF text-extraction step differs (`pdf-parse` on Node,
+`pdfjs-dist` in the browser).
 
 ## Development
 
 ```sh
 npm install
-npm run build       # type-check + emit dist/
-npm start -- --help # run from source via tsx
+npm run typecheck     # type-check everything
+npm start -- --help   # run the CLI from source via tsx
+npm run web           # run the web UI dev server
 ```
+

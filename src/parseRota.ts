@@ -1,23 +1,17 @@
-// Parses the plain-text extraction of a UK railway-staff rota PDF into
-// structured Link / Week / Day data.
+// Parses the layout-aware text extraction of a UK railway-staff rota PDF
+// into structured Link / Week / Day data.
 //
-// `pdf-parse` strips all in-line whitespace, so a typical extracted line looks
-// like one of these (notice no spaces between "columns"):
+// Each schedule row appears on a single line with all 7 day-cells inline:
 //
-//   Link 1Date:05/02/2026
-//   134.3007:4616:2208:3607:2416:0908:4507:1415:5008:3608:3617:0908:33
-//   FDBM  133BM  133AOBM  132BM  127FD
-//   Total:1036.00Avg:37.001036.00
+//   1 34.30 07:46 16:22 AO 08:36 07:24 16:09 BM 112 08:45 ...FD FD FD
 //
-// Fortunately every "column" has a distinct token shape:
+// where each cell is either:
 //
-//   Wk number      : 1-2 digits (1..52ish)
-//   Total hours    : "XX.YY"
-//   Time triple    : "HH:MM HH:MM HH:MM"  (sign-on, sign-off, duration)
-//   Day code       : FD | AO | BM<digits>
+//   FD                                — Free Day (rest)
+//   <on> <off> <code> <duration>      — working day, code = AO | BM <digits>
 //
-// So we can rebuild the table with regular expressions. We then group rows
-// into links by detecting the Wk number resetting to 1.
+// Tokens may be glued together (e.g. "08:33FD" or "BM 210207:19"); we use
+// regex with constrained lookaheads to disambiguate.
 
 export interface DayShift {
     /** Sign-on time, e.g. "07:46". */
@@ -53,44 +47,95 @@ export interface Link {
     weeks: Week[];
 }
 
-const RE_TIME = /\d{2}:\d{2}/g;
-const RE_CODE = /FD|AO|BM\s*\d+/g;
-// A time row, as a single squashed token: <wk><total>.<frac><time><time><time>...
-// `\d{1,2}?` is non-greedy so the total is forced to be the trailing "XX.YY".
-const RE_TIME_ROW = /^(\d{1,2}?)(\d{2}\.\d{2})((?:\d{2}:\d{2}){3,})$/;
-const RE_LINK_HEADER = /^Link\s*(\d+)\s*(?:Date:\s*(\d{2}\/\d{2}\/\d{4}))?\s*$/;
-const RE_DATE_ONLY = /^Date:\s*(\d{2}\/\d{2}\/\d{4})\s*$/;
+// ---------- Tokenisation ----------
 
-interface TimeRow {
-    wk: number;
-    totalHours: string;
-    triples: { on: string; off: string; duration: string }[];
+type Token =
+    | { t: 'time'; v: string }
+    | { t: 'fd' }
+    | { t: 'ao' }
+    | { t: 'bm'; v: string }
+    | { t: 'total'; v: string }
+    | { t: 'int'; v: number };
+
+// BM<digits>: prefer 3- or 4-digit, with a lookahead that ensures we don't
+// swallow the duration time digits that may be glued on (e.g. "BM 210207:19").
+//
+// XX.YY total comes BEFORE plain integers in the alternation so "34.30" is
+// not split into 34 and (later) 30. Times come before plain integers too.
+const TOK_RE =
+    /BM\s*\d{3,4}(?=$|[^0-9]|\d{2}:\d{2})|AO|FD|\d{2}:\d{2}|\d{1,2}\.\d{2}|\d{1,2}/g;
+
+function tokenize(line: string): Token[] {
+    const out: Token[] = [];
+    for (const m of line.matchAll(TOK_RE)) {
+        const s = m[0];
+        if (s === 'FD') out.push({ t: 'fd' });
+        else if (s === 'AO') out.push({ t: 'ao' });
+        else if (s.startsWith('BM')) out.push({ t: 'bm', v: s.replace(/\s+/g, ' ') });
+        else if (/^\d{2}:\d{2}$/.test(s)) out.push({ t: 'time', v: s });
+        else if (/^\d{1,2}\.\d{2}$/.test(s)) out.push({ t: 'total', v: s });
+        else out.push({ t: 'int', v: parseInt(s, 10) });
+    }
+    return out;
 }
 
-const parseTimeRow = (line: string): TimeRow | null => {
-    const squashed = line.replace(/\s+/g, '');
-    const m = RE_TIME_ROW.exec(squashed);
-    if (!m) return null;
-    const wk = parseInt(m[1], 10);
-    const totalHours = m[2];
-    const times = m[3].match(RE_TIME) ?? [];
-    if (times.length === 0 || times.length % 3 !== 0) return null;
-    const triples: TimeRow['triples'] = [];
-    for (let i = 0; i < times.length; i += 3) {
-        triples.push({ on: times[i], off: times[i + 1], duration: times[i + 2] });
-    }
-    if (triples.length > 7) return null;
-    return { wk, totalHours, triples };
-};
+// ---------- Row parsing ----------
 
-const parseCodeRow = (line: string): string[] | null => {
-    const tokens = line.match(RE_CODE);
-    if (!tokens || tokens.length !== 7) return null;
-    // Make sure those 7 tokens account for the entire line (no stray digits).
-    const stripped = line.replace(RE_CODE, '').replace(/\s+/g, '');
-    if (stripped.length > 0) return null;
-    return tokens.map((t) => t.replace(/\s+/g, ' '));
-};
+interface ParsedRow {
+    wk: number;
+    totalHours: string;
+    days: Day[];
+}
+
+function parseRow(line: string): ParsedRow | null {
+    const toks = tokenize(line);
+    if (toks.length < 3) return null;
+    if (toks[0].t !== 'int') return null;
+    if (toks[1].t !== 'total') return null;
+    const wk = toks[0].v;
+    const totalHours = toks[1].v;
+    if (wk < 1 || wk > 99) return null;
+
+    let i = 2;
+    const days: Day[] = [];
+    for (let cell = 0; cell < 7; cell++) {
+        const tok = toks[i];
+        if (!tok) return null;
+        if (tok.t === 'fd') {
+            days.push({ code: 'FD' });
+            i++;
+            continue;
+        }
+        // Working cell: time, time, (ao | bm), time
+        const a = toks[i];
+        const b = toks[i + 1];
+        const c = toks[i + 2];
+        const d = toks[i + 3];
+        if (
+            !a || !b || !c || !d ||
+            a.t !== 'time' || b.t !== 'time' || d.t !== 'time' ||
+            (c.t !== 'ao' && c.t !== 'bm')
+        ) {
+            return null;
+        }
+        days.push({
+            on: a.v,
+            off: b.v,
+            duration: d.v,
+            code: c.t === 'ao' ? 'AO' : c.v,
+        });
+        i += 4;
+    }
+    if (i !== toks.length) return null; // junk at end → not a real schedule row
+    return { wk, totalHours, days };
+}
+
+// ---------- Header parsing ----------
+
+const RE_LINK_HEADER = /Link\s*(\d+)\s*(?:Date\s*:\s*(\d{2}\/\d{2}\/\d{4}))?/g;
+const RE_DATE_ONLY = /^Date\s*:\s*(\d{2}\/\d{2}\/\d{4})\s*$/;
+
+// ---------- Top-level ----------
 
 export function parseRotaText(text: string): Link[] {
     const lines = text
@@ -98,19 +143,25 @@ export function parseRotaText(text: string): Link[] {
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
 
-    // 1. Collect Link headers and Date: lines (in document order).
+    // Collect link headers (with optional inline date) and standalone Date: lines.
     const linkHeaders: { link: number; date?: string }[] = [];
     const pendingDates: string[] = [];
     for (const line of lines) {
-        const lh = RE_LINK_HEADER.exec(line);
-        if (lh) {
-            linkHeaders.push({ link: parseInt(lh[1], 10), date: lh[2] });
+        const dateOnly = RE_DATE_ONLY.exec(line);
+        if (dateOnly) {
+            pendingDates.push(dateOnly[1]);
             continue;
         }
-        const d = RE_DATE_ONLY.exec(line);
-        if (d) pendingDates.push(d[1]);
+        // Pages can have multiple "Link N" tokens on the same line.
+        RE_LINK_HEADER.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        let any = false;
+        while ((m = RE_LINK_HEADER.exec(line)) !== null) {
+            any = true;
+            linkHeaders.push({ link: parseInt(m[1], 10), date: m[2] });
+        }
+        if (any) continue;
     }
-    // Pages with multiple links list "Link N" lines first, then "Date:" lines.
     let di = 0;
     for (const h of linkHeaders) {
         if (!h.date && di < pendingDates.length) h.date = pendingDates[di++];
@@ -119,43 +170,21 @@ export function parseRotaText(text: string): Link[] {
         throw new Error('No "Link N" headers found in PDF text.');
     }
 
-    // 2. Collect every time row and code row in document order.
-    const timeRows: TimeRow[] = [];
-    const codeRows: string[][] = [];
+    // Parse every schedule row.
+    const rows: ParsedRow[] = [];
     for (const line of lines) {
-        const t = parseTimeRow(line);
-        if (t) {
-            timeRows.push(t);
-            continue;
-        }
-        const c = parseCodeRow(line);
-        if (c) codeRows.push(c);
+        const r = parseRow(line);
+        if (r) rows.push(r);
     }
-
-    if (timeRows.length !== codeRows.length) {
-        throw new Error(
-            `Mismatched table data: ${timeRows.length} time rows vs ${codeRows.length} code rows.`,
-        );
-    }
-    if (timeRows.length === 0) {
+    if (rows.length === 0) {
         throw new Error('No schedule rows recognised in PDF text.');
     }
 
-    // 3. Sanity-check each row: number of working-day codes == number of time triples.
-    for (let i = 0; i < timeRows.length; i++) {
-        const working = codeRows[i].filter((c) => c !== 'FD').length;
-        if (working !== timeRows[i].triples.length) {
-            throw new Error(
-                `Row ${i}: ${working} non-FD day codes but ${timeRows[i].triples.length} time triples.\n  codes: ${codeRows[i].join(' ')}\n  times: ${timeRows[i].triples.map((t) => `${t.on}-${t.off}`).join(' ')}`,
-            );
-        }
-    }
-
-    // 4. Detect link boundaries by Wk-number resets (wk drops back to a lower value).
+    // Group rows into links by Wk-number resets.
     const groupSizes: number[] = [];
     let curStart = 0;
-    for (let i = 1; i <= timeRows.length; i++) {
-        const isEnd = i === timeRows.length || timeRows[i].wk <= timeRows[i - 1].wk;
+    for (let i = 1; i <= rows.length; i++) {
+        const isEnd = i === rows.length || rows[i].wk <= rows[i - 1].wk;
         if (isEnd) {
             groupSizes.push(i - curStart);
             curStart = i;
@@ -164,11 +193,10 @@ export function parseRotaText(text: string): Link[] {
 
     if (groupSizes.length !== linkHeaders.length) {
         throw new Error(
-            `Found ${linkHeaders.length} link header(s) but detected ${groupSizes.length} schedule group(s) in the table data. Group sizes: [${groupSizes.join(', ')}].`,
+            `Found ${linkHeaders.length} link header(s) but ${groupSizes.length} schedule group(s) (sizes: [${groupSizes.join(', ')}]).`,
         );
     }
 
-    // 5. Build the Link / Week / Day tree.
     const links: Link[] = [];
     let cursor = 0;
     for (let g = 0; g < groupSizes.length; g++) {
@@ -176,24 +204,12 @@ export function parseRotaText(text: string): Link[] {
         const size = groupSizes[g];
         const weeks: Week[] = [];
         for (let r = 0; r < size; r++) {
-            const tr = timeRows[cursor + r];
-            const codes = codeRows[cursor + r];
-            const days: Day[] = [];
-            let ti = 0;
-            for (const code of codes) {
-                if (code === 'FD') {
-                    days.push({ code: 'FD' });
-                } else {
-                    const t = tr.triples[ti++];
-                    days.push({ on: t.on, off: t.off, duration: t.duration, code });
-                }
-            }
-            weeks.push({ wk: tr.wk, totalHours: tr.totalHours, days });
+            const row = rows[cursor + r];
+            weeks.push({ wk: row.wk, totalHours: row.totalHours, days: row.days });
         }
         links.push({ link: header.link, date: header.date, weeks });
         cursor += size;
     }
-
     links.sort((a, b) => a.link - b.link);
     return links;
 }

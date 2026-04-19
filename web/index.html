@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>rota2ics — UK railway rota → calendar</title>
+        <link rel="stylesheet" href="./style.css" />
+    </head>
+    <body>
+        <main>
+            <header>
+                <h1>rota2ics</h1>
+                <p class="tagline">
+                    Convert a UK railway-staff rota PDF into a calendar (.ics) file
+                    you can import into Google Calendar, Apple Calendar, or
+                    Outlook. Everything runs in your browser — your PDF is never
+                    uploaded anywhere.
+                </p>
+            </header>
+
+            <section class="step">
+                <h2>1. Choose your rota PDF</h2>
+                <input id="pdf" type="file" accept="application/pdf" />
+                <p id="pdf-status" class="status"></p>
+            </section>
+
+            <section class="step" id="step-link" hidden>
+                <h2>2. Pick your Link and Wk row</h2>
+                <p class="hint">
+                    A <em>Link</em> is one rotating cycle of weeks; the row
+                    you sit on (your <em>Wk</em>) advances by one each week.
+                    Tell us which Link you’re on, which row you’re sitting
+                    on this week, and which Sunday that week starts.
+                </p>
+                <div class="grid">
+                    <label>
+                        Link
+                        <select id="link"></select>
+                    </label>
+                    <label>
+                        Wk row
+                        <select id="row"></select>
+                    </label>
+                    <label>
+                        Sunday of that week
+                        <input id="start" type="date" />
+                    </label>
+                    <label>
+                        Weeks to generate
+                        <input id="weeks" type="number" min="1" max="260" value="26" />
+                    </label>
+                </div>
+                <ul class="hint help-list">
+                    <li><strong>Link</strong> — the rota number printed at
+                        the top of your PDF (e.g. “Link 1”).</li>
+                    <li><strong>Wk row</strong> — the numbered row of that
+                        Link covering the week starting on the Sunday you
+                        choose. The row will advance automatically each week
+                        and wrap back to 1 at the end of the cycle.</li>
+                    <li><strong>Sunday of that week</strong> — must be a
+                        Sunday. If you pick another day we’ll use the
+                        previous Sunday.</li>
+                    <li><strong>Weeks to generate</strong> — how far ahead
+                        to project events. 26 ≈ 6 months, 52 = a year.</li>
+                </ul>
+                <p id="link-stats" class="link-stats"></p>
+            </section>
+
+            <section class="step" id="step-options" hidden>
+                <h2>3. Options</h2>
+                <div class="grid">
+                    <label>
+                        Calendar name
+                        <input
+                            id="name"
+                            type="text"
+                            placeholder="e.g. BMC Link 1"
+                        />
+                    </label>
+                    <label>
+                        Title prefix (optional)
+                        <input id="prefix" type="text" placeholder="e.g. Work: " />
+                    </label>
+                </div>
+                <ul class="hint help-list">
+                    <li><strong>Calendar name</strong> — the name shown when
+                        the .ics is imported (Google/Apple/Outlook display
+                        this as the calendar or event source).</li>
+                    <li><strong>Title prefix</strong> — prepended to every
+                        event title, useful if you import shifts into a
+                        shared calendar (e.g. “Work: BM 112” instead of
+                        just “BM 112”).</li>
+                </ul>
+                <fieldset>
+                    <legend>Rest days (FD)</legend>
+                    <label class="check">
+                        <input id="opt-fd" type="checkbox" checked />
+                        Include all-day “Rest Day” events
+                    </label>
+                    <p class="hint inset">
+                        <strong>FD = Free Day</strong> on the rota. When
+                        ticked, each rest day appears as a transparent
+                        all-day event so the day looks free in your
+                        calendar but is clearly labelled. Untick if you
+                        only want working days in your calendar.
+                    </p>
+                </fieldset>
+                <fieldset>
+                    <legend>As Ordered (AO)</legend>
+                    <p class="hint">
+                        <strong>AO = As Ordered</strong> (a.k.a. “spare”):
+                        you’re on duty but the actual diagram is assigned
+                        on the day. The PDF still prints nominal sign-on /
+                        sign-off times — choose how to render those:
+                    </p>
+                    <label class="radio">
+                        <input type="radio" name="ao" value="both" checked />
+                        All-day banner <em>and</em> timed event with nominal hours
+                        <span class="hint inline">— see at a glance it’s an
+                        AO day, plus a placeholder block on the nominal
+                        hours.</span>
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="ao" value="allday" />
+                        All-day banner only
+                        <span class="hint inline">— mark the day as AO but
+                        don’t block any time. Pick this if your real
+                        diagram will come through later.</span>
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="ao" value="timed" />
+                        Timed event only (using nominal hours)
+                        <span class="hint inline">— just block out the
+                        nominal hours, no all-day banner.</span>
+                    </label>
+                </fieldset>
+            </section>
+
+            <section class="step" id="step-generate" hidden>
+                <h2>4. Generate</h2>
+                <p class="hint">
+                    Downloads a <code>.ics</code> file you can import into
+                    Google Calendar, Apple Calendar, or Outlook. Times are
+                    written as floating local times, so each shift always
+                    displays in the viewer’s local time zone (perfect for
+                    UK use across BST/GMT).
+                </p>
+                <button id="generate" type="button">Download .ics</button>
+                <p id="gen-status" class="status"></p>
+            </section>
+
+            <section class="step" id="step-preview" hidden>
+                <h2>Preview</h2>
+                <p class="hint">First few events that will be in the file:</p>
+                <div id="preview"></div>
+            </section>
+
+            <footer>
+                <p>
+                    Source:
+                    <a
+                        href="https://github.com/harricross/rota2ics"
+                        target="_blank"
+                        rel="noopener"
+                        >github.com/harricross/rota2ics</a
+                    >. Times are written as floating local times so they display
+                    in the viewer’s local time zone.
+                </p>
+            </footer>
+        </main>
+        <script type="module" src="./main.ts"></script>
+    </body>
+</html>

@@ -1,0 +1,360 @@
+:root {
+    --fg: #1d1d1f;
+    --muted: #5f6368;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --accent: #0a66c2;
+    --accent-fg: #ffffff;
+    --border: #d6d9de;
+    --error: #b3261e;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    /* Prevent iOS Safari from auto-inflating font sizes in landscape. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    font: 16px/1.5
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        Roboto,
+        'Helvetica Neue',
+        Arial,
+        sans-serif;
+}
+
+main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+}
+
+header h1 {
+    margin: 0 0 6px;
+    font-size: 32px;
+    letter-spacing: -0.02em;
+}
+
+.tagline {
+    margin: 0 0 24px;
+    color: var(--muted);
+}
+
+.step {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin: 16px 0;
+}
+
+.step h2 {
+    margin: 0 0 12px;
+    font-size: 18px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px 16px;
+}
+
+label {
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    color: var(--muted);
+    gap: 4px;
+}
+
+label.check,
+label.radio {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    color: var(--fg);
+    margin: 4px 0;
+}
+
+input[type='text'],
+input[type='number'],
+input[type='date'],
+input[type='file'],
+select {
+    font: inherit;
+    /* 16px keeps iOS Safari from zooming in when an input gets focus. */
+    font-size: max(16px, 1em);
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--fg);
+    width: 100%;
+    min-height: 44px;
+}
+
+input[type='file'] {
+    padding: 8px;
+}
+
+input:focus,
+select:focus,
+button:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+fieldset {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px 12px;
+    margin: 12px 0 0;
+}
+
+legend {
+    padding: 0 6px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+button {
+    font: inherit;
+    padding: 12px 20px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    cursor: pointer;
+    font-weight: 600;
+    min-height: 44px;
+    width: 100%;
+    max-width: 320px;
+    touch-action: manipulation;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.status {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+    min-height: 1.2em;
+}
+
+.status.error {
+    color: var(--error);
+}
+
+.hint {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 6px 0 0;
+}
+
+.help-list {
+    list-style: disc;
+    padding-left: 22px;
+    margin: 8px 0 4px;
+}
+
+.help-list li {
+    margin: 4px 0;
+}
+
+.help-list strong {
+    color: var(--fg);
+}
+
+.hint.inset {
+    margin: 6px 0 0 24px;
+}
+
+.hint.inline {
+    display: block;
+    margin: 2px 0 0 22px;
+    font-size: 12px;
+}
+
+fieldset .hint {
+    margin: 0 0 8px;
+}
+
+.link-stats {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    background: #f0f4fa;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--fg);
+    min-height: 1.2em;
+}
+
+.link-stats:empty {
+    display: none;
+}
+
+.link-stats strong {
+    color: var(--accent);
+}
+
+#preview {
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: #fafbfc;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13px;
+}
+
+.evt {
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border);
+}
+
+.evt:last-child {
+    border-bottom: 0;
+}
+
+.evt .date {
+    color: var(--muted);
+}
+
+/* ---------- Mobile / narrow-viewport tweaks ---------- */
+
+@media (max-width: 600px) {
+    main {
+        padding: 16px 14px 60px;
+    }
+
+    header h1 {
+        font-size: 26px;
+    }
+
+    .tagline {
+        font-size: 14px;
+        margin-bottom: 16px;
+    }
+
+    .step {
+        padding: 14px 14px;
+        margin: 12px 0;
+        border-radius: 8px;
+    }
+
+    .step h2 {
+        font-size: 17px;
+    }
+
+    /* Stack form fields one-per-row for easier thumb input. */
+    .grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    fieldset {
+        padding: 8px 10px 10px;
+    }
+
+    .help-list {
+        padding-left: 18px;
+    }
+
+    .hint.inline {
+        margin-left: 26px;
+    }
+
+    label.radio,
+    label.check {
+        align-items: flex-start;
+        gap: 10px;
+        padding: 6px 0;
+    }
+
+    /* Bigger hit area for the tap targets. */
+    label.radio input,
+    label.check input {
+        margin-top: 3px;
+        transform: scale(1.15);
+    }
+
+    button {
+        width: 100%;
+        max-width: none;
+    }
+
+    #preview {
+        max-height: 50vh;
+        font-size: 12px;
+    }
+}
+
+/* Respect reduced-motion preference for any future transitions. */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Optional dark-mode polish so the page doesn't blare white at night. */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --fg: #e8eaed;
+        --muted: #a8acb3;
+        --bg: #131416;
+        --card: #1d1f22;
+        --border: #2f3236;
+        --accent: #4d9bf0;
+        --accent-fg: #0b0c0e;
+    }
+
+    input[type='text'],
+    input[type='number'],
+    input[type='date'],
+    input[type='file'],
+    select {
+        background: #15171a;
+        color: var(--fg);
+        color-scheme: dark;
+    }
+
+    .link-stats {
+        background: #16202c;
+    }
+
+    #preview {
+        background: #16181b;
+    }
+}
+
+footer {
+    margin-top: 28px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+}
+
+footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
+}

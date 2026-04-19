@@ -1,4 +1,4 @@
-import type { Day, DayShift, Link } from './parseRota.js';
+import type { Day, DayShift, Link } from './parseRota';
 
 export interface BuildOptions {
     link: Link;
@@ -17,6 +17,13 @@ export interface BuildOptions {
      * Default: true (FD days produce an all-day event).
      */
     includeRestDays?: boolean;
+    /**
+     * How to render `AO` (As Ordered / spare turn) days:
+     *   - "both"   (default): all-day banner + timed event with nominal hours
+     *   - "allday": just the all-day banner
+     *   - "timed":  just a timed event using the nominal hours
+     */
+    aoMode?: 'both' | 'allday' | 'timed';
     /** Description for non-FD shifts, in addition to the code. */
     descriptionTemplate?: (info: {
         link: number;
@@ -120,22 +127,12 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
 
             const ds = day as DayShift;
 
-            // AO = "As Ordered" / spare turn. The PDF shows nominal times but the
-            // actual shift is assigned on the day, so render it as an all-day
-            // event with the nominal times in the description.
-            if (ds.code === 'AO') {
-                events.push({
-                    uid: makeUid(link.link, wkNum, d, date, 'AO'),
-                    summary: (opts.summaryPrefix ?? '') + 'AO (As Ordered)',
-                    description:
-                        `Link ${link.link}, Wk ${wkNum}, ${DAY_NAMES[d]}\n` +
-                        `Nominal sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`,
-                    start: date,
-                    end: nextDay,
-                    allDay: true,
-                });
-                continue;
-            }
+            // AO = "As Ordered" / spare turn. The actual diagram is assigned on
+            // the day, but the PDF still prints nominal sign-on / sign-off times.
+            const isAO = ds.code === 'AO';
+            const aoMode = opts.aoMode ?? 'both';
+            const emitAOAllDay = isAO && (aoMode === 'both' || aoMode === 'allday');
+            const emitTimed = !isAO || aoMode === 'both' || aoMode === 'timed';
 
             const [onH, onM] = ds.on.split(':').map(Number);
             const [offH, offM] = ds.off.split(':').map(Number);
@@ -148,23 +145,43 @@ export function buildEvents(opts: BuildOptions): IcsEvent[] {
                 end.setDate(end.getDate() + 1);
             }
 
-            const baseDesc =
-                `Link ${link.link}, Wk ${wkNum}, ${DAY_NAMES[d]}\n` +
-                `Sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`;
-            const extra = opts.descriptionTemplate?.({
-                link: link.link,
-                wk: wkNum,
-                day: ds,
-                dayIndex: d,
-            });
+            if (emitAOAllDay) {
+                events.push({
+                    uid: makeUid(link.link, wkNum, d, date, 'AO-allday'),
+                    summary: (opts.summaryPrefix ?? '') + 'AO (As Ordered)',
+                    description:
+                        `Link ${link.link}, Wk ${wkNum}, ${DAY_NAMES[d]}\n` +
+                        `Spare turn — actual diagram assigned on the day.\n` +
+                        `Nominal sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`,
+                    start: date,
+                    end: nextDay,
+                    allDay: true,
+                });
+            }
 
-            events.push({
-                uid: makeUid(link.link, wkNum, d, date, ds.code),
-                summary: (opts.summaryPrefix ?? '') + ds.code,
-                description: extra ? `${baseDesc}\n${extra}` : baseDesc,
-                start,
-                end,
-            });
+            if (emitTimed) {
+                const baseDesc =
+                    `Link ${link.link}, Wk ${wkNum}, ${DAY_NAMES[d]}\n` +
+                    (isAO
+                        ? `Nominal sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`
+                        : `Sign on: ${ds.on}  Sign off: ${ds.off}  Duration: ${ds.duration}`);
+                const extra = opts.descriptionTemplate?.({
+                    link: link.link,
+                    wk: wkNum,
+                    day: ds,
+                    dayIndex: d,
+                });
+
+                events.push({
+                    uid: makeUid(link.link, wkNum, d, date, ds.code),
+                    summary:
+                        (opts.summaryPrefix ?? '') +
+                        (isAO ? 'AO (nominal)' : ds.code),
+                    description: extra ? `${baseDesc}\n${extra}` : baseDesc,
+                    start,
+                    end,
+                });
+            }
         }
     }
 

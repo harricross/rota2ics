@@ -3,21 +3,22 @@
   "version": "0.1.0",
   "description": "Convert UK railway staff rota PDFs into ICS calendar files",
   "type": "module",
-  "bin": {
-    "rota2ics": "dist/cli.js"
-  },
   "scripts": {
     "start": "tsx src/cli.ts",
-    "build": "tsc",
-    "list": "tsx src/cli.ts --list"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx scripts/test-matrix.mts",
+    "list": "tsx src/cli.ts --list",
+    "web": "vite",
+    "web:build": "vite build",
+    "web:preview": "vite preview"
   },
   "dependencies": {
-    "pdf-parse": "^1.1.1"
+    "pdfjs-dist": "^4.4.168"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "@types/pdf-parse": "^1.1.4",
     "tsx": "^4.7.1",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vite": "^5.4.8"
   }
 }
