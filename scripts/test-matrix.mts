@@ -49,6 +49,66 @@ for (const l of links) {
     process.stdout.write(`  Link ${l.link}: ${l.weeks.length} weeks (Date: ${l.date ?? '?'})\n`);
 }
 
+// ---------- Robustness: leftmost names column, missing weekly totals ----------
+//
+// Some PDFs have an extra leftmost column with driver names (and may omit
+// the per-week H.MM Total column entirely). Mutate the fixture text and
+// assert the parse output matches the unmodified one.
+{
+    const NAMES = ['Smith', 'Jones-7', 'O Brien', 'McAllister', 'Patel 47', 'BMW Driver', 'AONDO', 'Lee'];
+    const variantLines: string[] = [];
+    let nameIdx = 0;
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        // Detect schedule rows by leading "<wk> <H.MM>" (current real format).
+        const m = /^(\d{1,2})\s+(\d{1,2}\.\d{2})\s+(.*)$/.exec(line);
+        if (m && parseInt(m[1], 10) >= 1 && parseInt(m[1], 10) <= 99) {
+            const name = NAMES[nameIdx++ % NAMES.length];
+            // Drop the H.MM total to also exercise the no-total path.
+            variantLines.push(`${name} ${m[1]} ${m[3]}`);
+        } else if (/^Total:/i.test(line)) {
+            // Skip the bottom totals line too.
+            continue;
+        } else {
+            variantLines.push(line);
+        }
+    }
+    const variantText = variantLines.join('\n') + '\n';
+    const variantLinks = parseRotaText(variantText);
+    const label = 'names-column + no-totals variant';
+    if (variantLinks.length !== links.length) {
+        fail(label, `link count ${variantLinks.length} != ${links.length}`);
+    } else {
+        let mismatched = false;
+        for (let li = 0; li < links.length; li++) {
+            const a = links[li];
+            const b = variantLinks[li];
+            if (a.link !== b.link || a.weeks.length !== b.weeks.length) {
+                fail(label, `link ${a.link} shape mismatch`);
+                mismatched = true;
+                break;
+            }
+            for (let wi = 0; wi < a.weeks.length; wi++) {
+                if (a.weeks[wi].wk !== b.weeks[wi].wk) {
+                    fail(label, `link ${a.link} wk index mismatch at row ${wi}`);
+                    mismatched = true;
+                    break;
+                }
+                for (let di = 0; di < 7; di++) {
+                    if (JSON.stringify(a.weeks[wi].days[di]) !== JSON.stringify(b.weeks[wi].days[di])) {
+                        fail(label, `link ${a.link} wk ${a.weeks[wi].wk} day ${di} differs`);
+                        mismatched = true;
+                        break;
+                    }
+                }
+                if (mismatched) break;
+            }
+            if (mismatched) break;
+        }
+        if (!mismatched) ok(label);
+    }
+}
+
 // Each row must have exactly 7 days; each working day must have 4 fields populated.
 for (const l of links) {
     for (const w of l.weeks) {

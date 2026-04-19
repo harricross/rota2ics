@@ -62,8 +62,12 @@ type Token =
 //
 // XX.YY total comes BEFORE plain integers in the alternation so "34.30" is
 // not split into 34 and (later) 30. Times come before plain integers too.
+//
+// Word boundaries on AO/FD/BM prevent name fragments like "AONDO" or "BMW"
+// from being mistaken for cell codes when the rota has a leftmost names
+// column.
 const TOK_RE =
-    /BM\s*\d{3,4}(?=$|[^0-9]|\d{2}:\d{2})|AO|FD|\d{2}:\d{2}|\d{1,2}\.\d{2}|\d{1,2}/g;
+    /\bBM\s*\d{3,4}(?=$|[^0-9]|\d{2}:\d{2})|\bAO\b|\bFD\b|\d{2}:\d{2}|\d{1,2}\.\d{2}|\d{1,2}/g;
 
 function tokenize(line: string): Token[] {
     const out: Token[] = [];
@@ -89,45 +93,59 @@ interface ParsedRow {
 
 function parseRow(line: string): ParsedRow | null {
     const toks = tokenize(line);
-    if (toks.length < 3) return null;
-    if (toks[0].t !== 'int') return null;
-    if (toks[1].t !== 'total') return null;
-    const wk = toks[0].v;
-    const totalHours = toks[1].v;
-    if (wk < 1 || wk > 99) return null;
+    if (toks.length < 8) return null; // wk + 7 cells (FD-only week is the minimum)
 
-    let i = 2;
-    const days: Day[] = [];
-    for (let cell = 0; cell < 7; cell++) {
-        const tok = toks[i];
-        if (!tok) return null;
-        if (tok.t === 'fd') {
-            days.push({ code: 'FD' });
+    // The line may be prefixed by a names/payroll column. Try every plausible
+    // wk anchor; accept the first start that consumes ALL remaining tokens as
+    // exactly 7 valid cells. The per-week H.MM total is optional — some rotas
+    // omit that column entirely.
+    for (let start = 0; start < toks.length - 7; start++) {
+        const wkTok = toks[start];
+        if (wkTok.t !== 'int' || wkTok.v < 1 || wkTok.v > 99) continue;
+
+        let i = start + 1;
+        let totalHours = '';
+        if (toks[i] && toks[i].t === 'total') {
+            totalHours = (toks[i] as { t: 'total'; v: string }).v;
             i++;
-            continue;
         }
-        // Working cell: time, time, (ao | bm), time
-        const a = toks[i];
-        const b = toks[i + 1];
-        const c = toks[i + 2];
-        const d = toks[i + 3];
-        if (
-            !a || !b || !c || !d ||
-            a.t !== 'time' || b.t !== 'time' || d.t !== 'time' ||
-            (c.t !== 'ao' && c.t !== 'bm')
-        ) {
-            return null;
+
+        const days: Day[] = [];
+        let ok = true;
+        for (let cell = 0; cell < 7; cell++) {
+            const tok = toks[i];
+            if (!tok) { ok = false; break; }
+            if (tok.t === 'fd') {
+                days.push({ code: 'FD' });
+                i++;
+                continue;
+            }
+            // Working cell: time, time, (ao | bm), time
+            const a = toks[i];
+            const b = toks[i + 1];
+            const c = toks[i + 2];
+            const d = toks[i + 3];
+            if (
+                !a || !b || !c || !d ||
+                a.t !== 'time' || b.t !== 'time' || d.t !== 'time' ||
+                (c.t !== 'ao' && c.t !== 'bm')
+            ) {
+                ok = false;
+                break;
+            }
+            days.push({
+                on: a.v,
+                off: b.v,
+                duration: d.v,
+                code: c.t === 'ao' ? 'AO' : c.v,
+            });
+            i += 4;
         }
-        days.push({
-            on: a.v,
-            off: b.v,
-            duration: d.v,
-            code: c.t === 'ao' ? 'AO' : c.v,
-        });
-        i += 4;
+        if (!ok) continue;
+        if (i !== toks.length) continue; // leftover tokens → wrong start
+        return { wk: wkTok.v, totalHours, days };
     }
-    if (i !== toks.length) return null; // junk at end → not a real schedule row
-    return { wk, totalHours, days };
+    return null;
 }
 
 // ---------- Header parsing ----------
