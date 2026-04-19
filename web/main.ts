@@ -37,6 +37,7 @@ const generateBtn = $<HTMLButtonElement>('#generate');
 const genStatus = $<HTMLParagraphElement>('#gen-status');
 const stepPreview = $<HTMLElement>('#step-preview');
 const previewBox = $<HTMLDivElement>('#preview');
+const previewStatus = $<HTMLParagraphElement>('#preview-status');
 const linkStats = $<HTMLParagraphElement>('#link-stats');
 const rbFieldset = $<HTMLFieldSetElement>('#rb-fieldset');
 
@@ -200,6 +201,7 @@ pdfInput.addEventListener('change', async () => {
         stepLink.hidden = false;
         stepOptions.hidden = false;
         stepGenerate.hidden = false;
+        updatePreview();
     } catch (err) {
         setStatus(
             pdfStatus,
@@ -216,10 +218,24 @@ linkSel.addEventListener('change', () => {
     if (l && (!nameInput.value || /^Rota Link \d+$/.test(nameInput.value))) {
         nameInput.value = `Rota Link ${l.link}`;
     }
+    updatePreview();
 });
 
-rowSel.addEventListener('change', refreshStats);
-weeksInput.addEventListener('input', refreshStats);
+rowSel.addEventListener('change', () => {
+    refreshStats();
+    updatePreview();
+});
+weeksInput.addEventListener('input', () => {
+    refreshStats();
+    updatePreview();
+});
+startInput.addEventListener('change', () => updatePreview());
+nameInput.addEventListener('input', () => updatePreview());
+prefixInput.addEventListener('input', () => updatePreview());
+fdCheck.addEventListener('change', () => updatePreview());
+for (const r of document.querySelectorAll<HTMLInputElement>('input[name="ao"], input[name="rb"]')) {
+    r.addEventListener('change', () => updatePreview());
+}
 
 const getAoMode = (): 'both' | 'allday' | 'timed' => {
     const checked = document.querySelector<HTMLInputElement>(
@@ -246,37 +262,45 @@ const parseStartDate = (s: string): Date => {
 const slugify = (s: string): string =>
     s.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'rota';
 
-const buildAndDownload = (): void => {
-    setStatus(genStatus, '');
+interface ComputedEvents {
+    events: ReturnType<typeof buildEvents>;
+    weeks: number;
+    link: Link;
+    note?: string;
+}
+
+/**
+ * Compute events from the current form state. Returns null and writes a
+ * status message if inputs are incomplete or invalid. Used by both the
+ * always-on preview and the Generate-and-download flow.
+ */
+const computeEvents = (statusEl: HTMLElement): ComputedEvents | null => {
     const link = parsedLinks.find((l) => l.link === parseInt(linkSel.value, 10));
     if (!link) {
-        setStatus(genStatus, 'No Link selected.', 'error');
-        return;
+        setStatus(statusEl, 'No Link selected.', 'error');
+        return null;
     }
     const startWk = parseInt(rowSel.value, 10);
     if (!startWk) {
-        setStatus(genStatus, 'No Wk row selected.', 'error');
-        return;
+        setStatus(statusEl, 'No Wk row selected.', 'error');
+        return null;
     }
     if (!startInput.value) {
-        setStatus(genStatus, 'Please pick a start Sunday.', 'error');
-        return;
+        setStatus(statusEl, 'Please pick a start Sunday.', 'error');
+        return null;
     }
     let start = parseStartDate(startInput.value);
+    let note: string | undefined;
     if (start.getDay() !== 0) {
         const adjusted = new Date(start);
         adjusted.setDate(start.getDate() - start.getDay());
-        setStatus(
-            genStatus,
-            `Note: ${startInput.value} isn't a Sunday — using previous Sunday ${adjusted.toISOString().slice(0, 10)}.`,
-        );
+        note = `Note: ${startInput.value} isn't a Sunday — using previous Sunday ${adjusted.toISOString().slice(0, 10)}.`;
         start = adjusted;
     }
     const weeks = Math.max(1, Math.min(260, parseInt(weeksInput.value, 10) || 26));
 
-    let events;
     try {
-        events = buildEvents({
+        const events = buildEvents({
             link,
             startWk,
             startDate: start,
@@ -287,14 +311,79 @@ const buildAndDownload = (): void => {
             aoMode: getAoMode(),
             rbMode: getRbMode(),
         });
+        return { events, weeks, link, note };
     } catch (err) {
         setStatus(
-            genStatus,
+            statusEl,
             `Error: ${err instanceof Error ? err.message : String(err)}`,
             'error',
         );
+        return null;
+    }
+};
+
+const fmtDateTime = new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+});
+const fmtDate = new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+});
+
+const renderPreview = (events: ReturnType<typeof buildEvents>): void => {
+    stepPreview.hidden = false;
+    previewBox.innerHTML = '';
+    for (const e of events.slice(0, 12)) {
+        const div = document.createElement('div');
+        div.className = 'evt';
+        const when = e.allDay
+            ? `${fmtDate.format(e.start)} (all day)`
+            : `${fmtDateTime.format(e.start)} → ${fmtDateTime.format(e.end)}`;
+        div.innerHTML = `<strong>${escapeHtml(e.summary)}</strong><br><span class="date">${escapeHtml(when)}</span>`;
+        previewBox.appendChild(div);
+    }
+    if (events.length > 12) {
+        const more = document.createElement('div');
+        more.className = 'evt';
+        more.textContent = `… and ${events.length - 12} more.`;
+        previewBox.appendChild(more);
+    }
+};
+
+/** Recompute and re-render the preview. Safe to call any time inputs change. */
+const updatePreview = (): void => {
+    if (parsedLinks.length === 0) return;
+    // Clear any previous error from a failed Generate so the live preview
+    // doesn't display stale messages while the user fiddles with controls.
+    if (genStatus.classList.contains('error')) setStatus(genStatus, '');
+    const computed = computeEvents(previewStatus);
+    if (!computed) {
+        // computeEvents wrote an error to previewStatus; hide the events list
+        previewBox.innerHTML = '';
         return;
     }
+    setStatus(
+        previewStatus,
+        computed.note
+            ? `${computed.note} Showing ${computed.events.length} event(s) over ${computed.weeks} week(s).`
+            : `Showing ${computed.events.length} event(s) over ${computed.weeks} week(s).`,
+    );
+    renderPreview(computed.events);
+};
+
+const buildAndDownload = (): void => {
+    setStatus(genStatus, '');
+    const computed = computeEvents(genStatus);
+    if (!computed) return;
+    const { events, weeks, link, note } = computed;
 
     const ics = buildIcs(events, nameInput.value || `Rota Link ${link.link}`);
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
@@ -309,42 +398,12 @@ const buildAndDownload = (): void => {
 
     setStatus(
         genStatus,
-        `Downloaded ${events.length} event(s) over ${weeks} week(s).`,
+        (note ? `${note} ` : '') +
+            `Downloaded ${events.length} event(s) over ${weeks} week(s).`,
     );
 
-    // Render a preview of the first ~10 events.
-    stepPreview.hidden = false;
-    previewBox.innerHTML = '';
-    const fmt = new Intl.DateTimeFormat(undefined, {
-        weekday: 'short',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    });
-    const fmtDay = new Intl.DateTimeFormat(undefined, {
-        weekday: 'short',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-    });
-    for (const e of events.slice(0, 12)) {
-        const div = document.createElement('div');
-        div.className = 'evt';
-        const when = e.allDay
-            ? `${fmtDay.format(e.start)} (all day)`
-            : `${fmt.format(e.start)} → ${fmt.format(e.end)}`;
-        div.innerHTML = `<strong>${escapeHtml(e.summary)}</strong><br><span class="date">${escapeHtml(when)}</span>`;
-        previewBox.appendChild(div);
-    }
-    if (events.length > 12) {
-        const more = document.createElement('div');
-        more.className = 'evt';
-        more.textContent = `… and ${events.length - 12} more.`;
-        previewBox.appendChild(more);
-    }
+    // Keep the preview in sync with what was just downloaded.
+    renderPreview(events);
 };
 
 const escapeHtml = (s: string): string =>
