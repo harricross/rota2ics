@@ -4,7 +4,6 @@
 // identical text and identical parsing.
 
 import * as pdfjs from 'pdfjs-dist';
-// Vite-friendly worker import: ?url returns the URL string for the bundled file.
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 import { parseRotaText, type Link } from '../src/parseRota';
@@ -13,8 +12,6 @@ import { extractTextFromPdfDoc, type PdfDocHandle } from '../src/pdfText';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
-// ---------- DOM helpers ----------
-
 const $ = <T extends HTMLElement>(sel: string): T => {
     const el = document.querySelector(sel);
     if (!el) throw new Error(`Missing element: ${sel}`);
@@ -22,6 +19,7 @@ const $ = <T extends HTMLElement>(sel: string): T => {
 };
 
 const pdfInput = $<HTMLInputElement>('#pdf');
+const pdfFilename = $<HTMLParagraphElement>('#pdf-filename');
 const pdfStatus = $<HTMLParagraphElement>('#pdf-status');
 const stepLink = $<HTMLElement>('#step-link');
 const linkSel = $<HTMLSelectElement>('#link');
@@ -39,17 +37,88 @@ const stepPreview = $<HTMLElement>('#step-preview');
 const previewBox = $<HTMLDivElement>('#preview');
 const previewStatus = $<HTMLParagraphElement>('#preview-status');
 const linkStats = $<HTMLParagraphElement>('#link-stats');
-const rbFieldset = $<HTMLFieldSetElement>('#rb-fieldset');
-const spFieldset = $<HTMLFieldSetElement>('#sp-fieldset');
-
-// ---------- State ----------
+const spareFieldset = $<HTMLFieldSetElement>('#spare-fieldset');
+const spareCodes = $<HTMLSpanElement>('#spare-codes');
+const iosNote = $<HTMLParagraphElement>('#ios-note');
+const iosDismiss = $<HTMLButtonElement>('#ios-note-dismiss');
+const resetAll = $<HTMLButtonElement>('#reset-all');
+const actionBar = $<HTMLDivElement>('#action-bar');
+const actionBarSummary = $<HTMLDivElement>('#action-bar-summary');
+const actionBarDownload = $<HTMLButtonElement>('#action-bar-download');
 
 let parsedLinks: Link[] = [];
-/** True until the user manually edits the start input — lets us auto-fill it. */
 let startInputUserEdited = false;
 
 startInput.addEventListener('input', () => {
     startInputUserEdited = true;
+});
+
+// ---------- Persistence ----------
+
+const STORAGE_KEY = 'rota2ics:settings:v1';
+const IOS_DISMISS_KEY = 'rota2ics:ios-note-dismissed';
+
+interface PersistedSettings {
+    name?: string;
+    prefix?: string;
+    weeks?: number;
+    includeFd?: boolean;
+    spare?: 'both' | 'allday' | 'timed';
+}
+
+const savePrefs = (): void => {
+    try {
+        const data: PersistedSettings = {
+            name: nameInput.value || undefined,
+            prefix: prefixInput.value || undefined,
+            weeks: parseInt(weeksInput.value, 10) || 26,
+            includeFd: fdCheck.checked,
+            spare: getSpareMode(),
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {
+        /* ignore */
+    }
+};
+
+const loadPrefs = (): void => {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw) as PersistedSettings;
+        if (data.name) nameInput.value = data.name;
+        if (data.prefix) prefixInput.value = data.prefix;
+        if (typeof data.weeks === 'number') weeksInput.value = String(data.weeks);
+        if (typeof data.includeFd === 'boolean') fdCheck.checked = data.includeFd;
+        if (data.spare) {
+            const r = document.querySelector<HTMLInputElement>(
+                `input[name="spare"][value="${data.spare}"]`,
+            );
+            if (r) r.checked = true;
+        }
+        updateChipsFromInput();
+    } catch {
+        /* ignore */
+    }
+};
+
+// ---------- iOS UA banner ----------
+
+const isIOS = (): boolean =>
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+if (isIOS() && !localStorage.getItem(IOS_DISMISS_KEY)) {
+    iosNote.hidden = false;
+}
+
+iosDismiss.addEventListener('click', () => {
+    iosNote.hidden = true;
+    try {
+        localStorage.setItem(IOS_DISMISS_KEY, '1');
+    } catch {
+        /* ignore */
+    }
 });
 
 // ---------- PDF → text ----------
@@ -59,8 +128,6 @@ async function extractPdfTextBrowser(file: File): Promise<string> {
     const pdf = (await pdfjs.getDocument({ data: buf }).promise) as unknown as PdfDocHandle;
     return extractTextFromPdfDoc(pdf);
 }
-
-// ---------- Wiring ----------
 
 const setStatus = (
     el: HTMLElement,
@@ -98,21 +165,21 @@ const pdfDateToIso = (s: string | undefined): string | null => {
     if (!s) return null;
     const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
     if (!m) return null;
-    return `${m[3]}-${m[2]}-${m[1]}`;
+    const [, dd, mm, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
 };
-void pdfDateToIso; // currently unused; kept for potential future "use PDF date" toggle
 
 const applyLinkDefaults = (): void => {
     const link = parsedLinks.find((l) => l.link === parseInt(linkSel.value, 10));
     if (!link) return;
-    if (!startInputUserEdited && !startInput.value) {
-        startInput.value = defaultStartSunday();
+    if (!startInputUserEdited) {
+        const iso = pdfDateToIso(link.date) ?? defaultStartSunday();
+        startInput.value = iso;
     }
     if (!rowSel.value && rowSel.options.length > 0) rowSel.value = '1';
     renderLinkStats(link);
 };
 
-/** Parse a printed total like "34.30" or "34:30" (= 34h 30m) into total minutes. */
 const parseHoursDotMinutes = (s: string): number | null => {
     const m = s.match(/^(\d{1,2})[.:](\d{2})$/);
     if (!m) return null;
@@ -135,7 +202,6 @@ const renderLinkStats = (link: Link): void => {
         Math.min(260, parseInt(weeksInput.value, 10) || 26),
     );
 
-    // Walk the cycle starting at startWk for `horizon` weeks.
     let total = 0;
     let counted = 0;
     for (let w = 0; w < horizon; w++) {
@@ -168,16 +234,68 @@ const refreshStats = (): void => {
 const defaultStartSunday = (): string => {
     const today = new Date();
     const d = new Date(today);
-    // Upcoming Sunday: today if today is already Sunday, else next Sunday.
     const dow = today.getDay();
     const offset = dow === 0 ? 0 : 7 - dow;
     d.setDate(today.getDate() + offset);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// ---------- Spare-type codes (AO/SP/RB) ----------
+
+const SPARE_CODES = ['AO', 'SP', 'RB'] as const;
+type SpareCode = (typeof SPARE_CODES)[number];
+
+const detectSpareCodes = (links: Link[]): SpareCode[] => {
+    const found = new Set<SpareCode>();
+    for (const l of links) {
+        for (const w of l.weeks) {
+            for (const d of w.days) {
+                if (SPARE_CODES.includes(d.code as SpareCode)) {
+                    found.add(d.code as SpareCode);
+                }
+            }
+        }
+    }
+    return SPARE_CODES.filter((c) => found.has(c));
+};
+
+const getSpareMode = (): 'both' | 'allday' | 'timed' => {
+    const checked = document.querySelector<HTMLInputElement>(
+        'input[name="spare"]:checked',
+    );
+    return (checked?.value as 'both' | 'allday' | 'timed') ?? 'both';
+};
+
+// ---------- Weeks chips ----------
+
+const chips = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('.chip[data-weeks]'),
+);
+
+const updateChipsFromInput = (): void => {
+    const v = parseInt(weeksInput.value, 10);
+    for (const c of chips) {
+        c.classList.toggle('active', parseInt(c.dataset.weeks ?? '', 10) === v);
+    }
+};
+
+for (const c of chips) {
+    c.addEventListener('click', () => {
+        weeksInput.value = c.dataset.weeks ?? '';
+        updateChipsFromInput();
+        refreshStats();
+        updatePreview();
+        savePrefs();
+    });
+}
+
+// ---------- PDF picker ----------
+
 pdfInput.addEventListener('change', async () => {
     const file = pdfInput.files?.[0];
     if (!file) return;
+    pdfFilename.hidden = false;
+    pdfFilename.textContent = file.name;
     setStatus(pdfStatus, `Reading ${file.name}…`);
     stepLink.hidden = true;
     stepOptions.hidden = true;
@@ -195,14 +313,23 @@ pdfInput.addEventListener('change', async () => {
         );
         populateLinks();
         applyLinkDefaults();
-        rbFieldset.hidden = !anyLinkHasRB(parsedLinks);
-        spFieldset.hidden = !anyLinkHasSP(parsedLinks);
+
+        const detected = detectSpareCodes(parsedLinks);
+        if (detected.length > 0) {
+            spareFieldset.hidden = false;
+            spareCodes.textContent = `Detected: ${detected.join(' · ')}`;
+        } else {
+            spareFieldset.hidden = true;
+            spareCodes.textContent = '';
+        }
+
         if (!nameInput.value && parsedLinks[0]) {
             nameInput.value = `Rota Link ${parsedLinks[0].link}`;
         }
         stepLink.hidden = false;
         stepOptions.hidden = false;
         stepGenerate.hidden = false;
+        actionBar.hidden = false;
         updatePreview();
     } catch (err) {
         setStatus(
@@ -228,43 +355,52 @@ rowSel.addEventListener('change', () => {
     updatePreview();
 });
 weeksInput.addEventListener('input', () => {
+    updateChipsFromInput();
     refreshStats();
     updatePreview();
+    savePrefs();
 });
 startInput.addEventListener('change', () => updatePreview());
-nameInput.addEventListener('input', () => updatePreview());
-prefixInput.addEventListener('input', () => updatePreview());
-fdCheck.addEventListener('change', () => updatePreview());
-for (const r of document.querySelectorAll<HTMLInputElement>('input[name="ao"], input[name="rb"], input[name="sp"]')) {
-    r.addEventListener('change', () => updatePreview());
+nameInput.addEventListener('input', () => {
+    updatePreview();
+    savePrefs();
+});
+prefixInput.addEventListener('input', () => {
+    updatePreview();
+    savePrefs();
+});
+fdCheck.addEventListener('change', () => {
+    updatePreview();
+    savePrefs();
+});
+for (const r of document.querySelectorAll<HTMLInputElement>(
+    'input[name="spare"]',
+)) {
+    r.addEventListener('change', () => {
+        updatePreview();
+        savePrefs();
+    });
 }
 
-const getAoMode = (): 'both' | 'allday' | 'timed' => {
-    const checked = document.querySelector<HTMLInputElement>(
-        'input[name="ao"]:checked',
-    );
-    return (checked?.value as 'both' | 'allday' | 'timed') ?? 'both';
-};
+// ---------- Reset ----------
 
-const getRbMode = (): 'both' | 'allday' | 'timed' => {
-    const checked = document.querySelector<HTMLInputElement>(
-        'input[name="rb"]:checked',
-    );
-    return (checked?.value as 'both' | 'allday' | 'timed') ?? 'both';
-};
+resetAll.addEventListener('click', () => {
+    if (!confirm('Clear the chosen PDF and start over? Saved settings stay.')) return;
+    parsedLinks = [];
+    pdfInput.value = '';
+    pdfFilename.hidden = true;
+    pdfFilename.textContent = '';
+    setStatus(pdfStatus, '');
+    stepLink.hidden = true;
+    stepOptions.hidden = true;
+    stepGenerate.hidden = true;
+    stepPreview.hidden = true;
+    actionBar.hidden = true;
+    spareFieldset.hidden = true;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+});
 
-const anyLinkHasRB = (links: Link[]): boolean =>
-    links.some((l) => l.weeks.some((w) => w.days.some((d) => d.code === 'RB')));
-
-const getSpMode = (): 'both' | 'allday' | 'timed' => {
-    const checked = document.querySelector<HTMLInputElement>(
-        'input[name="sp"]:checked',
-    );
-    return (checked?.value as 'both' | 'allday' | 'timed') ?? 'both';
-};
-
-const anyLinkHasSP = (links: Link[]): boolean =>
-    links.some((l) => l.weeks.some((w) => w.days.some((d) => d.code === 'SP')));
+// ---------- Build / Preview ----------
 
 const parseStartDate = (s: string): Date => {
     const [y, m, d] = s.split('-').map(Number);
@@ -281,11 +417,6 @@ interface ComputedEvents {
     note?: string;
 }
 
-/**
- * Compute events from the current form state. Returns null and writes a
- * status message if inputs are incomplete or invalid. Used by both the
- * always-on preview and the Generate-and-download flow.
- */
 const computeEvents = (statusEl: HTMLElement): ComputedEvents | null => {
     const link = parsedLinks.find((l) => l.link === parseInt(linkSel.value, 10));
     if (!link) {
@@ -312,6 +443,7 @@ const computeEvents = (statusEl: HTMLElement): ComputedEvents | null => {
     const weeks = Math.max(1, Math.min(260, parseInt(weeksInput.value, 10) || 26));
 
     try {
+        const spareMode = getSpareMode();
         const events = buildEvents({
             link,
             startWk,
@@ -320,9 +452,9 @@ const computeEvents = (statusEl: HTMLElement): ComputedEvents | null => {
             calendarName: nameInput.value || undefined,
             summaryPrefix: prefixInput.value || undefined,
             includeRestDays: fdCheck.checked,
-            aoMode: getAoMode(),
-            rbMode: getRbMode(),
-            spMode: getSpMode(),
+            aoMode: spareMode,
+            rbMode: spareMode,
+            spMode: spareMode,
         });
         return { events, weeks, link, note };
     } catch (err) {
@@ -371,15 +503,21 @@ const renderPreview = (events: ReturnType<typeof buildEvents>): void => {
     }
 };
 
-/** Recompute and re-render the preview. Safe to call any time inputs change. */
+const updateActionBarSummary = (computed: ComputedEvents | null): void => {
+    if (!computed) {
+        actionBarSummary.textContent = 'Fill in the options above';
+        return;
+    }
+    actionBarSummary.textContent =
+        `Link ${computed.link.link} · Wk ${parseInt(rowSel.value, 10)} · ${computed.weeks} weeks · ${computed.events.length} events`;
+};
+
 const updatePreview = (): void => {
     if (parsedLinks.length === 0) return;
-    // Clear any previous error from a failed Generate so the live preview
-    // doesn't display stale messages while the user fiddles with controls.
     if (genStatus.classList.contains('error')) setStatus(genStatus, '');
     const computed = computeEvents(previewStatus);
+    updateActionBarSummary(computed);
     if (!computed) {
-        // computeEvents wrote an error to previewStatus; hide the events list
         previewBox.innerHTML = '';
         return;
     }
@@ -415,7 +553,6 @@ const buildAndDownload = (): void => {
             `Downloaded ${events.length} event(s) over ${weeks} week(s).`,
     );
 
-    // Keep the preview in sync with what was just downloaded.
     renderPreview(events);
 };
 
@@ -433,3 +570,7 @@ const escapeHtml = (s: string): string =>
     );
 
 generateBtn.addEventListener('click', buildAndDownload);
+actionBarDownload.addEventListener('click', buildAndDownload);
+
+loadPrefs();
+updateChipsFromInput();
