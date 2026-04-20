@@ -408,6 +408,73 @@ details.help[open] summary::before {
     color: var(--accent);
 }
 
+/* ---------- Snap-to-Sunday note ---------- */
+
+.snap-note {
+    margin: 8px 0 0;
+    padding: 8px 12px;
+    background: #fff7e0;
+    border: 1px solid #f0d97a;
+    border-radius: 6px;
+    color: #5a4500;
+    font-size: 13px;
+}
+
+.snap-note:empty {
+    display: none;
+}
+
+/* ---------- Row-finder ---------- */
+
+.row-finder {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+    max-height: 320px;
+    overflow: auto;
+    padding: 4px;
+}
+
+.row-finder button.row-card {
+    text-align: left;
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    font-weight: 400;
+    cursor: pointer;
+}
+
+.row-finder button.row-card:hover {
+    border-color: var(--accent);
+    background: rgba(10, 102, 194, 0.04);
+}
+
+.row-finder button.row-card.active {
+    border-color: var(--accent);
+    background: rgba(10, 102, 194, 0.1);
+}
+
+.row-finder .row-card-title {
+    font-weight: 600;
+    color: var(--accent);
+    font-size: 13px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.row-finder .row-card-days {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    line-height: 1.4;
+}
+
 /* ---------- Preview ---------- */
 
 #preview {
@@ -605,6 +672,24 @@ footer {
 
     .ios-note .dismiss {
         color: #f0d97a;
+    }
+
+    .snap-note {
+        background: #2a2415;
+        border-color: #635020;
+        color: #f0d97a;
+    }
+
+    .row-finder button.row-card {
+        background: #15171a;
+    }
+
+    .row-finder button.row-card:hover {
+        background: rgba(77, 155, 240, 0.08);
+    }
+
+    .row-finder button.row-card.active {
+        background: rgba(77, 155, 240, 0.16);
     }
 
     .link-stats {

@@ -62,6 +62,15 @@
                     </label>
                 </div>
                 <p id="link-stats" class="link-stats"></p>
+                <p id="start-snap" class="snap-note" hidden></p>
+                <details class="help" id="row-finder-details">
+                    <summary>Not sure which row you’re on? Match it to your shifts</summary>
+                    <p class="hint">
+                        Pick the row whose first few days match your roster
+                        for the week you chose. Tap it to select.
+                    </p>
+                    <div id="row-finder" class="row-finder"></div>
+                </details>
                 <details class="help">
                     <summary>What do these mean?</summary>
                     <ul class="help-list">
@@ -107,16 +116,17 @@
                     </ul>
                 </details>
 
-                <fieldset>
-                    <legend>Rest days (FD)</legend>
+                <fieldset id="fd-fieldset" hidden>
+                    <legend>Rest days (FD / RD)</legend>
                     <label class="check">
                         <input id="opt-fd" type="checkbox" checked />
                         Include all-day “Rest Day” events
                     </label>
                     <details class="help">
-                        <summary>What is FD?</summary>
+                        <summary>What is FD / RD?</summary>
                         <p class="hint inset">
-                            <strong>FD = Free Day</strong> on the rota. When
+                            <strong>FD = Free Day</strong> (some operators
+                            print <strong>RD</strong>) on the rota. When
                             ticked, each rest day appears as a transparent
                             all-day event so the day looks free in your
                             calendar but is clearly labelled.
@@ -124,41 +134,66 @@
                     </details>
                 </fieldset>
 
-                <fieldset id="spare-fieldset" hidden>
-                    <legend>Spare-type days <span id="spare-codes" class="codes-pill"></span></legend>
+                <fieldset id="ao-fieldset" hidden>
+                    <legend>As Ordered (AO)</legend>
+                    <p class="hint">
+                        <strong>AO</strong> — you’re on duty but the actual
+                        diagram is assigned on the day. The PDF prints
+                        nominal sign-on / sign-off times.
+                    </p>
                     <label class="radio">
-                        <input type="radio" name="spare" value="both" checked />
+                        <input type="radio" name="ao" value="both" checked />
                         All-day banner <em>and</em> timed event
                     </label>
                     <label class="radio">
-                        <input type="radio" name="spare" value="allday" />
+                        <input type="radio" name="ao" value="allday" />
                         All-day banner only
                     </label>
                     <label class="radio">
-                        <input type="radio" name="spare" value="timed" />
+                        <input type="radio" name="ao" value="timed" />
                         Timed event only (using nominal hours)
                     </label>
-                    <details class="help">
-                        <summary>What are these codes?</summary>
-                        <p class="hint">
-                            On UK rotas these codes mean you’re on duty but the
-                            actual diagram is assigned on the day. The PDF
-                            still prints nominal sign-on / sign-off times.
-                        </p>
-                        <ul class="help-list">
-                            <li><strong>AO</strong> — As Ordered / spare turn.</li>
-                            <li><strong>SP</strong> — Spare (other operators’ name for AO).</li>
-                            <li><strong>RB</strong> — Route Refresher / route familiarisation.</li>
-                        </ul>
-                        <p class="hint">
-                            <strong>Both</strong> = see at a glance it’s a
-                            spare day plus a placeholder time block.
-                            <strong>All-day only</strong> = mark the day but
-                            don’t block any time.
-                            <strong>Timed only</strong> = just block out the
-                            nominal hours.
-                        </p>
-                    </details>
+                </fieldset>
+
+                <fieldset id="sp-fieldset" hidden>
+                    <legend>Spare (SP)</legend>
+                    <p class="hint">
+                        <strong>SP = Spare</strong> — other operators’ name
+                        for AO. On duty but the diagram is assigned on the
+                        day; the PDF prints nominal sign-on / sign-off times.
+                    </p>
+                    <label class="radio">
+                        <input type="radio" name="sp" value="both" checked />
+                        All-day banner <em>and</em> timed event
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="sp" value="allday" />
+                        All-day banner only
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="sp" value="timed" />
+                        Timed event only (using nominal hours)
+                    </label>
+                </fieldset>
+
+                <fieldset id="rb-fieldset" hidden>
+                    <legend>Route Refresher (RB)</legend>
+                    <p class="hint">
+                        <strong>RB</strong> — route familiarisation turn.
+                        The PDF prints sign-on / sign-off times.
+                    </p>
+                    <label class="radio">
+                        <input type="radio" name="rb" value="both" checked />
+                        All-day banner <em>and</em> timed event
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="rb" value="allday" />
+                        All-day banner only
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="rb" value="timed" />
+                        Timed event only (using nominal hours)
+                    </label>
                 </fieldset>
             </section>
 

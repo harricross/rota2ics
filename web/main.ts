@@ -37,8 +37,10 @@ const stepPreview = $<HTMLElement>('#step-preview');
 const previewBox = $<HTMLDivElement>('#preview');
 const previewStatus = $<HTMLParagraphElement>('#preview-status');
 const linkStats = $<HTMLParagraphElement>('#link-stats');
-const spareFieldset = $<HTMLFieldSetElement>('#spare-fieldset');
-const spareCodes = $<HTMLSpanElement>('#spare-codes');
+const fdFieldset = $<HTMLFieldSetElement>('#fd-fieldset');
+const aoFieldset = $<HTMLFieldSetElement>('#ao-fieldset');
+const spFieldset = $<HTMLFieldSetElement>('#sp-fieldset');
+const rbFieldset = $<HTMLFieldSetElement>('#rb-fieldset');
 const iosNote = $<HTMLParagraphElement>('#ios-note');
 const iosDismiss = $<HTMLButtonElement>('#ios-note-dismiss');
 const resetAll = $<HTMLButtonElement>('#reset-all');
@@ -63,7 +65,9 @@ interface PersistedSettings {
     prefix?: string;
     weeks?: number;
     includeFd?: boolean;
-    spare?: 'both' | 'allday' | 'timed';
+    ao?: 'both' | 'allday' | 'timed';
+    sp?: 'both' | 'allday' | 'timed';
+    rb?: 'both' | 'allday' | 'timed';
 }
 
 const savePrefs = (): void => {
@@ -73,7 +77,9 @@ const savePrefs = (): void => {
             prefix: prefixInput.value || undefined,
             weeks: parseInt(weeksInput.value, 10) || 26,
             includeFd: fdCheck.checked,
-            spare: getSpareMode(),
+            ao: getRadioMode('ao'),
+            sp: getRadioMode('sp'),
+            rb: getRadioMode('rb'),
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
@@ -90,9 +96,11 @@ const loadPrefs = (): void => {
         if (data.prefix) prefixInput.value = data.prefix;
         if (typeof data.weeks === 'number') weeksInput.value = String(data.weeks);
         if (typeof data.includeFd === 'boolean') fdCheck.checked = data.includeFd;
-        if (data.spare) {
+        for (const name of ['ao', 'sp', 'rb'] as const) {
+            const v = data[name];
+            if (!v) continue;
             const r = document.querySelector<HTMLInputElement>(
-                `input[name="spare"][value="${data.spare}"]`,
+                `input[name="${name}"][value="${v}"]`,
             );
             if (r) r.checked = true;
         }
@@ -240,30 +248,26 @@ const defaultStartSunday = (): string => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// ---------- Spare-type codes (AO/SP/RB) ----------
+// ---------- Per-code detection (FD/RD, AO, SP, RB) ----------
 
-const SPARE_CODES = ['AO', 'SP', 'RB'] as const;
-type SpareCode = (typeof SPARE_CODES)[number];
+type Mode = 'both' | 'allday' | 'timed';
 
-const detectSpareCodes = (links: Link[]): SpareCode[] => {
-    const found = new Set<SpareCode>();
+const hasCode = (links: Link[], codes: readonly string[]): boolean => {
     for (const l of links) {
         for (const w of l.weeks) {
             for (const d of w.days) {
-                if (SPARE_CODES.includes(d.code as SpareCode)) {
-                    found.add(d.code as SpareCode);
-                }
+                if (codes.includes(d.code)) return true;
             }
         }
     }
-    return SPARE_CODES.filter((c) => found.has(c));
+    return false;
 };
 
-const getSpareMode = (): 'both' | 'allday' | 'timed' => {
+const getRadioMode = (name: 'ao' | 'sp' | 'rb'): Mode => {
     const checked = document.querySelector<HTMLInputElement>(
-        'input[name="spare"]:checked',
+        `input[name="${name}"]:checked`,
     );
-    return (checked?.value as 'both' | 'allday' | 'timed') ?? 'both';
+    return (checked?.value as Mode) ?? 'both';
 };
 
 // ---------- Weeks chips ----------
@@ -314,14 +318,10 @@ pdfInput.addEventListener('change', async () => {
         populateLinks();
         applyLinkDefaults();
 
-        const detected = detectSpareCodes(parsedLinks);
-        if (detected.length > 0) {
-            spareFieldset.hidden = false;
-            spareCodes.textContent = `Detected: ${detected.join(' · ')}`;
-        } else {
-            spareFieldset.hidden = true;
-            spareCodes.textContent = '';
-        }
+        fdFieldset.hidden = !hasCode(parsedLinks, ['FD']);
+        aoFieldset.hidden = !hasCode(parsedLinks, ['AO']);
+        spFieldset.hidden = !hasCode(parsedLinks, ['SP']);
+        rbFieldset.hidden = !hasCode(parsedLinks, ['RB']);
 
         if (!nameInput.value && parsedLinks[0]) {
             nameInput.value = `Rota Link ${parsedLinks[0].link}`;
@@ -374,7 +374,7 @@ fdCheck.addEventListener('change', () => {
     savePrefs();
 });
 for (const r of document.querySelectorAll<HTMLInputElement>(
-    'input[name="spare"]',
+    'input[name="ao"], input[name="sp"], input[name="rb"]',
 )) {
     r.addEventListener('change', () => {
         updatePreview();
@@ -396,7 +396,10 @@ resetAll.addEventListener('click', () => {
     stepGenerate.hidden = true;
     stepPreview.hidden = true;
     actionBar.hidden = true;
-    spareFieldset.hidden = true;
+    fdFieldset.hidden = true;
+    aoFieldset.hidden = true;
+    spFieldset.hidden = true;
+    rbFieldset.hidden = true;
     window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
@@ -443,7 +446,6 @@ const computeEvents = (statusEl: HTMLElement): ComputedEvents | null => {
     const weeks = Math.max(1, Math.min(260, parseInt(weeksInput.value, 10) || 26));
 
     try {
-        const spareMode = getSpareMode();
         const events = buildEvents({
             link,
             startWk,
@@ -452,9 +454,9 @@ const computeEvents = (statusEl: HTMLElement): ComputedEvents | null => {
             calendarName: nameInput.value || undefined,
             summaryPrefix: prefixInput.value || undefined,
             includeRestDays: fdCheck.checked,
-            aoMode: spareMode,
-            rbMode: spareMode,
-            spMode: spareMode,
+            aoMode: getRadioMode('ao'),
+            spMode: getRadioMode('sp'),
+            rbMode: getRadioMode('rb'),
         });
         return { events, weeks, link, note };
     } catch (err) {
