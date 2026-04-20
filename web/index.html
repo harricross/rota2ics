@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <title>rota2ics — UK railway rota → calendar</title>
         <link rel="stylesheet" href="./style.css" />
     </head>
@@ -12,38 +12,36 @@
                 <h1>rota2ics</h1>
                 <p class="tagline">
                     Convert a UK railway-staff rota PDF into a calendar (.ics) file
-                    you can import into Google Calendar, Apple Calendar, or
-                    Outlook. Everything runs in your browser — your PDF is never
-                    uploaded anywhere.
+                    for Google Calendar, Apple Calendar or Outlook.
+                    Everything runs in your browser — your PDF is never uploaded.
                 </p>
-                <p class="ios-note">
+                <p id="ios-note" class="ios-note" hidden>
                     <strong>On iPhone or iPad:</strong> open this page in
-                    <strong>Safari</strong>. Other iOS browsers can't hand the
-                    downloaded <code>.ics</code> file to the Calendar app.
+                    <strong>Safari</strong> for the smoothest hand-off to the
+                    Calendar app.
+                    <button id="ios-note-dismiss" type="button" class="dismiss" aria-label="Dismiss">×</button>
                 </p>
             </header>
 
             <section class="step">
-                <h2>1. Choose your rota PDF</h2>
-                <input id="pdf" type="file" accept="application/pdf" />
-                <p id="pdf-status" class="status"></p>
+                <h2><span class="step-num">1</span> Choose your rota PDF</h2>
+                <label class="file-button" for="pdf">
+                    <span class="file-button-label">Choose PDF…</span>
+                    <input id="pdf" type="file" accept="application/pdf" />
+                </label>
+                <p id="pdf-filename" class="file-chosen" hidden></p>
+                <p id="pdf-status" class="status" role="status" aria-live="polite"></p>
             </section>
 
             <section class="step" id="step-link" hidden>
-                <h2>2. Pick your Link and Wk row</h2>
-                <p class="hint">
-                    A <em>Link</em> is one rotating cycle of weeks; the row
-                    you sit on (your <em>Wk</em>) advances by one each week.
-                    Tell us which Link you’re on, which row you’re sitting
-                    on this week, and which Sunday that week starts.
-                </p>
+                <h2><span class="step-num">2</span> Pick your Link and row</h2>
                 <div class="grid">
                     <label>
                         Link
                         <select id="link"></select>
                     </label>
                     <label>
-                        Wk row
+                        Your row this week (Wk)
                         <select id="row"></select>
                     </label>
                     <label>
@@ -52,27 +50,48 @@
                     </label>
                     <label>
                         Weeks to generate
-                        <input id="weeks" type="number" min="1" max="260" value="26" />
+                        <span class="weeks-row">
+                            <span class="chips" role="group" aria-label="Quick weeks">
+                                <button type="button" class="chip" data-weeks="4">4</button>
+                                <button type="button" class="chip" data-weeks="13">13</button>
+                                <button type="button" class="chip" data-weeks="26">26</button>
+                                <button type="button" class="chip" data-weeks="52">52</button>
+                            </span>
+                            <input id="weeks" type="number" min="1" max="260" value="26" />
+                        </span>
                     </label>
                 </div>
-                <ul class="hint help-list">
-                    <li><strong>Link</strong> — the rota number printed at
-                        the top of your PDF (e.g. “Link 1”).</li>
-                    <li><strong>Wk row</strong> — the numbered row of that
-                        Link covering the week starting on the Sunday you
-                        choose. The row will advance automatically each week
-                        and wrap back to 1 at the end of the cycle.</li>
-                    <li><strong>Sunday of that week</strong> — must be a
-                        Sunday. If you pick another day we’ll use the
-                        previous Sunday.</li>
-                    <li><strong>Weeks to generate</strong> — how far ahead
-                        to project events. 26 ≈ 6 months, 52 = a year.</li>
-                </ul>
                 <p id="link-stats" class="link-stats"></p>
+                <p id="start-snap" class="snap-note" hidden></p>
+                <details class="help" id="row-finder-details">
+                    <summary>Not sure which row you’re on? Match it to your shifts</summary>
+                    <p class="hint">
+                        Pick the row whose first few days match your roster
+                        for the week you chose. Tap it to select.
+                    </p>
+                    <div id="row-finder" class="row-finder"></div>
+                </details>
+                <details class="help">
+                    <summary>What do these mean?</summary>
+                    <ul class="help-list">
+                        <li><strong>Link</strong> — the rota number printed at
+                            the top of your PDF (e.g. “Link 1”).</li>
+                        <li><strong>Your row this week (Wk)</strong> — the
+                            numbered row of that Link covering the week starting
+                            on the Sunday you choose. The row advances
+                            automatically and wraps back to 1 at the end of the
+                            cycle.</li>
+                        <li><strong>Sunday of that week</strong> — must be a
+                            Sunday. If you pick another day we’ll snap back to
+                            the previous Sunday.</li>
+                        <li><strong>Weeks to generate</strong> — how far ahead
+                            to project events. 26 ≈ 6 months, 52 = a year.</li>
+                    </ul>
+                </details>
             </section>
 
             <section class="step" id="step-options" hidden>
-                <h2>3. Options</h2>
+                <h2><span class="step-num">3</span> Options</h2>
                 <div class="grid">
                     <label>
                         Calendar name
@@ -87,134 +106,116 @@
                         <input id="prefix" type="text" placeholder="e.g. Work: " />
                     </label>
                 </div>
-                <ul class="hint help-list">
-                    <li><strong>Calendar name</strong> — the name shown when
-                        the .ics is imported (Google/Apple/Outlook display
-                        this as the calendar or event source).</li>
-                    <li><strong>Title prefix</strong> — prepended to every
-                        event title, useful if you import shifts into a
-                        shared calendar (e.g. “Work: BM 112” instead of
-                        just “BM 112”).</li>
-                </ul>
-                <fieldset>
-                    <legend>Rest days (FD)</legend>
+                <details class="help">
+                    <summary>What do these mean?</summary>
+                    <ul class="help-list">
+                        <li><strong>Calendar name</strong> — the name shown
+                            when the .ics is imported.</li>
+                        <li><strong>Title prefix</strong> — prepended to every
+                            event title (e.g. “Work: BM 112”).</li>
+                    </ul>
+                </details>
+
+                <fieldset id="fd-fieldset" hidden>
+                    <legend>Rest days (FD / RD)</legend>
                     <label class="check">
                         <input id="opt-fd" type="checkbox" checked />
                         Include all-day “Rest Day” events
                     </label>
-                    <p class="hint inset">
-                        <strong>FD = Free Day</strong> on the rota. When
-                        ticked, each rest day appears as a transparent
-                        all-day event so the day looks free in your
-                        calendar but is clearly labelled. Untick if you
-                        only want working days in your calendar.
-                    </p>
+                    <details class="help">
+                        <summary>What is FD / RD?</summary>
+                        <p class="hint inset">
+                            <strong>FD = Free Day</strong> (some operators
+                            print <strong>RD</strong>) on the rota. When
+                            ticked, each rest day appears as a transparent
+                            all-day event so the day looks free in your
+                            calendar but is clearly labelled.
+                        </p>
+                    </details>
                 </fieldset>
-                <fieldset>
+
+                <fieldset id="ao-fieldset" hidden>
                     <legend>As Ordered (AO)</legend>
                     <p class="hint">
-                        <strong>AO = As Ordered</strong> (a.k.a. “spare”):
-                        you’re on duty but the actual diagram is assigned
-                        on the day. The PDF still prints nominal sign-on /
-                        sign-off times — choose how to render those:
+                        <strong>AO</strong> — you’re on duty but the actual
+                        diagram is assigned on the day. The PDF prints
+                        nominal sign-on / sign-off times.
                     </p>
                     <label class="radio">
                         <input type="radio" name="ao" value="both" checked />
-                        All-day banner <em>and</em> timed event with nominal hours
-                        <span class="hint inline">— see at a glance it’s an
-                        AO day, plus a placeholder block on the nominal
-                        hours.</span>
+                        All-day banner <em>and</em> timed event
                     </label>
                     <label class="radio">
                         <input type="radio" name="ao" value="allday" />
                         All-day banner only
-                        <span class="hint inline">— mark the day as AO but
-                        don’t block any time. Pick this if your real
-                        diagram will come through later.</span>
                     </label>
                     <label class="radio">
                         <input type="radio" name="ao" value="timed" />
                         Timed event only (using nominal hours)
-                        <span class="hint inline">— just block out the
-                        nominal hours, no all-day banner.</span>
                     </label>
                 </fieldset>
-                <fieldset id="rb-fieldset" hidden>
-                    <legend>Route Refresher (RB)</legend>
-                    <p class="hint">
-                        <strong>RB = Route Refresher</strong>: a route
-                        familiarisation turn. The PDF prints sign-on /
-                        sign-off times — choose how to render those.
-                        (Only shown because your PDF contains RB days.)
-                    </p>
-                    <label class="radio">
-                        <input type="radio" name="rb" value="both" checked />
-                        All-day banner <em>and</em> timed event with nominal hours
-                        <span class="hint inline">— see at a glance it’s a
-                        Route Refresher day, plus a timed block.</span>
-                    </label>
-                    <label class="radio">
-                        <input type="radio" name="rb" value="allday" />
-                        All-day banner only
-                        <span class="hint inline">— mark the day as Route
-                        Refresher but don’t block any time.</span>
-                    </label>
-                    <label class="radio">
-                        <input type="radio" name="rb" value="timed" />
-                        Timed event only (using nominal hours)
-                        <span class="hint inline">— just block out the
-                        nominal hours, no all-day banner.</span>
-                    </label>
-                </fieldset>
+
                 <fieldset id="sp-fieldset" hidden>
                     <legend>Spare (SP)</legend>
                     <p class="hint">
-                        <strong>SP = Spare</strong>: the same as AO on other
-                        operators’ rotas — you’re on duty but the actual
-                        diagram is assigned on the day. The PDF prints
-                        nominal sign-on / sign-off times. (Only shown
-                        because your PDF contains SP days.)
+                        <strong>SP = Spare</strong> — other operators’ name
+                        for AO. On duty but the diagram is assigned on the
+                        day; the PDF prints nominal sign-on / sign-off times.
                     </p>
                     <label class="radio">
                         <input type="radio" name="sp" value="both" checked />
-                        All-day banner <em>and</em> timed event with nominal hours
-                        <span class="hint inline">— see at a glance it’s a
-                        Spare day, plus a placeholder block on the nominal
-                        hours.</span>
+                        All-day banner <em>and</em> timed event
                     </label>
                     <label class="radio">
                         <input type="radio" name="sp" value="allday" />
                         All-day banner only
-                        <span class="hint inline">— mark the day as Spare
-                        but don’t block any time.</span>
                     </label>
                     <label class="radio">
                         <input type="radio" name="sp" value="timed" />
                         Timed event only (using nominal hours)
-                        <span class="hint inline">— just block out the
-                        nominal hours, no all-day banner.</span>
+                    </label>
+                </fieldset>
+
+                <fieldset id="rb-fieldset" hidden>
+                    <legend>Route Refresher (RB)</legend>
+                    <p class="hint">
+                        <strong>RB</strong> — route familiarisation turn.
+                        The PDF prints sign-on / sign-off times.
+                    </p>
+                    <label class="radio">
+                        <input type="radio" name="rb" value="both" checked />
+                        All-day banner <em>and</em> timed event
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="rb" value="allday" />
+                        All-day banner only
+                    </label>
+                    <label class="radio">
+                        <input type="radio" name="rb" value="timed" />
+                        Timed event only (using nominal hours)
                     </label>
                 </fieldset>
             </section>
 
-            <section class="step" id="step-generate" hidden>
-                <h2>4. Generate</h2>
-                <p class="hint">
-                    Downloads a <code>.ics</code> file you can import into
-                    Google Calendar, Apple Calendar, or Outlook. Times are
-                    written as floating local times, so each shift always
-                    displays in the viewer’s local time zone (perfect for
-                    UK use across BST/GMT).
-                </p>
-                <button id="generate" type="button">Download .ics</button>
-                <p id="gen-status" class="status"></p>
-            </section>
-
             <section class="step" id="step-preview" hidden>
                 <h2>Preview</h2>
-                <p class="hint">First few events that will be in the file. This updates automatically as you change options above.</p>
-                <p id="preview-status" class="status"></p>
+                <p id="preview-status" class="status" role="status" aria-live="polite"></p>
                 <div id="preview"></div>
+                <p class="hint">Updates automatically as you change options above.</p>
+            </section>
+
+            <section class="step" id="step-generate" hidden>
+                <h2><span class="step-num">4</span> Download</h2>
+                <button id="generate" type="button">Download .ics</button>
+                <p id="gen-status" class="status" role="status" aria-live="polite"></p>
+                <details class="help">
+                    <summary>About the .ics file</summary>
+                    <p class="hint">
+                        Times are written as floating local times, so each
+                        shift always displays in the viewer’s local time zone
+                        (perfect for UK use across BST/GMT).
+                    </p>
+                </details>
             </section>
 
             <footer>
@@ -225,11 +226,17 @@
                         target="_blank"
                         rel="noopener"
                         >github.com/harricross/rota2ics</a
-                    >. Times are written as floating local times so they display
-                    in the viewer’s local time zone.
+                    >.
+                    <button id="reset-all" type="button" class="text-link">Start over</button>
                 </p>
             </footer>
         </main>
+
+        <div id="action-bar" class="action-bar" hidden>
+            <div class="action-bar-summary" id="action-bar-summary"></div>
+            <button id="action-bar-download" type="button">Download .ics</button>
+        </div>
+
         <script type="module" src="./main.ts"></script>
     </body>
 </html>
